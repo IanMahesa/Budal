@@ -1,6 +1,6 @@
 @extends('partials.all')
 
-@section('title', 'QR Code Pengguna')
+@section('title', 'QR Code')
 
 @section('content')
 
@@ -24,11 +24,11 @@
     }
 
     .card {
-        width: 5.5cm;
-        height: 9cm;
+        width: 7cm;
+        height: 10.4cm;
 
-        min-width: 5.5cm;
-        min-height: 9cm;
+        min-width: 7cm;
+        min-height: 10.4cm;
 
         border: 2px solid #000;
         border-radius: 8px;
@@ -53,6 +53,7 @@
     .header h4 {
         margin: 0;
         font-size: 12px;
+        font-weight: bold;
     }
 
     .header p {
@@ -70,11 +71,12 @@
     .qr {
         text-align: center;
         margin: 5px 0;
+        padding-bottom: 4px;
     }
 
     .qr svg {
-        width: 150px;
-        height: 150px;
+        width: 200px;
+        height: 200px;
         max-width: 100%;
     }
 
@@ -90,9 +92,15 @@
     }
 
     .judulkolom {
-        width: 60px;
+        width: 80px;
         font-weight: bold;
-        padding-left: 15px;
+        padding-left: 17px;
+        font-size: 10px;
+    }
+
+    .isikolom {
+        width: 80px;        
+        font-size: 10px;
     }
 
     .titik {
@@ -135,27 +143,7 @@
         text-align: center;
 
         transition: all 0.2s ease;
-    }
-
-    .btn-dinas {
-        background: #0A5EB0;
-        color: #fff;
-    }
-
-    .btn-dinas:hover {
-        background: #084b8d;
-        color: #fff;
-    }
-
-    .btn-pribadi {
-        background: #198754;
-        color: #fff;
-    }
-
-    .btn-pribadi:hover {
-        background: #146c43;
-        color: #fff;
-    }
+    }    
 
     @media (max-width: 400px) {
         .qr-card-wrapper {
@@ -177,6 +165,7 @@
 
 <div class="qr-card-wrapper">
 
+@if($qrcode)
 <div class="card">
 
     <div class="header">
@@ -185,31 +174,32 @@
     </div>
 
     <div class="judul">
-        {{ strtoupper($user->name) }}
+        {{ $jenisQr === 'PEGAWAI' ? 'PRIBADI' : 'DINAS' }}
     </div>
 
     <div class="qr">
-        {!! QrCode::size(220)->generate((string) $user->id) !!}
+        {!! QrCode::size(200)->generate($qrcode->nomor_kartu) !!}
     </div>
 
     <table>
         <tr>
-            <td class="judulkolom">ID User</td>
-            <td class="titik">:</td>
-            <td>{{ $user->id }}</td>
-        </tr>
-
-        <tr>
             <td class="judulkolom">Nama</td>
             <td class="titik">:</td>
-            <td>{{ $user->name }}</td>
+            <td class="isikolom">{{ $user->name }}</td>
+        </tr>
+        
+        <tr>
+            <td class="judulkolom">Sub Bagian</td>
+            <td class="titik">:</td>
+            <td class="isikolom">{{ $qrcode->subbag->sub_bag ?? $pegawai->subbag->sub_bag ?? '-' }}</td>
         </tr>
 
         <tr>
-            <td class="judulkolom">Username</td>
+            <td class="judulkolom">{{ $jenisQr === 'PEGAWAI' ? 'NIK' : 'Nomor Kartu' }}</td>
             <td class="titik">:</td>
-            <td>{{ $user->username }}</td>
+            <td class="isikolom">{{ $jenisQr === 'PEGAWAI' ? $pegawai->nik : $qrcode->nomor_kartu }}</td>
         </tr>
+
     </table>
 
     <div class="footer">
@@ -217,17 +207,30 @@
     </div>
 
 </div>
+@else
+    <div class="alert alert-info text-center" role="status">
+        @if(!$pegawai)
+            Data pegawai untuk akun ini tidak ditemukan.
+        @elseif($jenisQr === 'PEGAWAI')
+            QR Code pribadi untuk akun ini belum tersedia.
+        @else
+            QR Code dinas aktif untuk akun ini belum tersedia.
+        @endif
+    </div>
+@endif
 
 <div class="qr-buttons">
 
-    <a href="{{ route('ijin.create', ['jenis' => 'DINAS']) }}"
-       class="btn-dinas">
-        DINAS
-    </a>
-
-    <a href="{{ route('ijin.create', ['jenis' => 'PRIBADI']) }}"
-       class="btn-pribadi">
+    <a href="{{ route('qrcode.index', ['jenis_qr' => 'PEGAWAI']) }}"
+       class="btn-pribadi {{ $jenisQr === 'PEGAWAI' ? 'active' : '' }}"
+       aria-current="{{ $jenisQr === 'PEGAWAI' ? 'page' : 'false' }}">
         PRIBADI
+    </a>
+    
+    <a href="{{ route('qrcode.index', ['jenis_qr' => 'SUBBAG']) }}"
+       class="btn-dinas {{ $jenisQr === 'SUBBAG' ? 'active' : '' }}"
+       aria-current="{{ $jenisQr === 'SUBBAG' ? 'page' : 'false' }}">
+        DINAS
     </a>
 
 </div>

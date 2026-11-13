@@ -1,9 +1,8 @@
 @extends('partials.all')
 
-@section('title','Data QR Code')
+@section('title','QR Code Dinas')
 
 @section('content')
-<div class="container">
 
     <div class="card tabel-card">
         <div class="card-body table-responsive">
@@ -40,12 +39,12 @@
                     <tr>
                         <th class="text-center" width="20"> <input type="checkbox" id="checkAll"> </th>
                         <th class="text-center" width="20">No</th>
-                        <th class="text-center">Tanggal Dinas</th>
-                        <th class="text-center">Tgl Generate</th>
-                        <th class="text-center">Nama Pegawai</th>
-                        <th class="text-center">Sub Bagian</th>
-                        <th class="text-center">Keterangan</th>
-                        <th class="text-center" width="160">Aksi</th>
+                        <th class="text-center" width="100">Tgl Pembuatan</th>
+                        <th class="text-center" width="250">Nama Pegawai</th>
+                        <th class="text-center" width="120">Sub Bagian</th>
+                        <th class="text-center" width="200">Tanggal Keluar Dinas</th>
+                        <th class="text-center" width="350">Keterangan</th>
+                        <th class="text-center" width="120">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -57,16 +56,10 @@
                         </td>
                         <td class="text-center">{{ $loop->iteration }}</td>
                         <td class="text-center">
-                            {{ $row->tanggal_dinas
-                                ? $row->tanggal_dinas->format('d-m-Y')
-                                : '-'
-                            }}
-                        </td>
-                        <td class="text-center">
                             {{ $row->tanggal_generate
-                                ? \Carbon\Carbon::parse($row->tanggal_generate)->format('d-m-Y')
-                                : '-'
-                            }}
+                            ? \Carbon\Carbon::parse($row->tanggal_generate)->format('d-m-Y')
+                            : '-'
+                        }}
                         </td>
                         <td>
                             {{ $row->pegawai->nama ?? '-' }}
@@ -75,6 +68,19 @@
                             <span class="badge bg-warning text-dark">
                                 {{ $row->pegawai->subbag->sub_bag ?? '-' }}
                             </span>
+                        </td>
+                        <td class="text-center">
+                            {{ $row->tanggal_dinas
+                                ? $row->tanggal_dinas->format('d-m-Y')
+                                : '-'
+                            }}
+                            @if($row->waktu_keluar || $row->waktu_masuk)
+                                <br>
+                                <small class="text-muted">
+                                    Keluar: {{ $row->waktu_keluar ? substr((string) $row->waktu_keluar, 0, 5) : '-' }}
+                                    | Masuk maks.: {{ $row->waktu_masuk ? substr((string) $row->waktu_masuk, 0, 5) : '-' }}
+                                </small>
+                            @endif
                         </td>
                         <td>
                             <strong>{{ $row->ket ?? '-' }}</strong>
@@ -113,7 +119,6 @@
             </table>
         </div>
     </div>
-</div>
 
 <script>
 const checkAll = document.getElementById('checkAll');
@@ -168,7 +173,7 @@ function submitSelection(actionUrl) {
 
 if (printButton) {
     printButton.addEventListener('click', function(){
-        submitSelection("{{ route('qrcode.print') }}");
+        submitSelection("{{ route('qrcode.dinas.print') }}");
     });
 }
 </script>

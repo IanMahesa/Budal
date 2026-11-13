@@ -17,7 +17,7 @@ class IjinKeluarWorkbookExport implements WithMultipleSheets
     {
         $jenis = $this->jenis
             ? [$this->jenis]
-            : ['PRIBADI', 'DINAS'];
+            : ['DINAS', 'PRIBADI'];
 
         return array_map(function ($jenis) {
             return new IjinKeluarExport(

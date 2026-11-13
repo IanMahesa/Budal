@@ -30,6 +30,23 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
+        // 1. Ambil data user yang sedang login
+        $user = Auth::user();
+
+        // 2. Lakukan pengecekan role dan atur redirect-nya
+        // (Pastikan method hasRole() tersedia, biasanya jika menggunakan Spatie Laravel Permission)
+        
+        if ($user->hasRole('Staf')) {
+            // Contoh: Jika role-nya Pegawai, diarahkan ke halaman scan/absensi
+            return redirect()->route('qrcode.index');
+        }
+
+        if ($user->hasRole('Operator')) {
+            // Contoh: Jika role-nya Operator, diarahkan ke halaman rekap
+            return redirect()->route('scan.index');
+        }
+
+        // 3. Default redirect (untuk Admin / role lain yang tetap ke dashboard)
         return redirect()->route('dashboard.index');
     }
 

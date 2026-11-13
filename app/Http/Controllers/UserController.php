@@ -6,12 +6,21 @@ use App\Models\Roles;
 use App\Models\Bagians;
 use App\Models\SubBagians;
 use App\Models\User;
+use App\Models\Pegawai;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:user-list', ['only' => ['index']]);
+        $this->middleware('permission:user-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:user-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:user-delete', ['only' => ['destroy']]);
+    }
+
     public function index()
     {
         $users = User::with('role')
@@ -19,6 +28,24 @@ class UserController extends Controller
                 $query->where('is_delete', 0)
                     ->orWhereNull('is_delete');
             })
+        ->where(function ($query) {
+            $query->whereHas('pegawai', function ($pegawaiQuery) {
+                $pegawaiQuery->where('status', 'Aktif')
+                    ->where('is_delete', 0);
+            })->orWhere(function ($unlinkedQuery) {
+                $unlinkedQuery->whereNull('id_peg')
+                    ->whereNotExists(function ($pegawaiQuery) {
+                        $pegawaiQuery->selectRaw('1')
+                            ->from('pegawai')
+                            ->whereColumn('pegawai.nik', 'users.username')
+                            ->where(function ($inactiveQuery) {
+                                $inactiveQuery->where('pegawai.status', '!=', 'Aktif')
+                                    ->orWhere('pegawai.is_delete', '!=', 0)
+                                    ->orWhereNull('pegawai.is_delete');
+                            });
+                    });
+            });
+        })
         ->orderBy('id', 'desc')->paginate(10);
 
         return view('user.index', compact('users'));
@@ -31,17 +58,48 @@ class UserController extends Controller
             ->orderBy('name')
             ->get();
 
-        $bagian = Bagians::orderBy('bag')->get();
+        $pegawai = Pegawai::where('status', 'Aktif')
+            ->whereDoesntHave('user')
+            ->whereNotIn('nik', User::select('username'))
+            ->orderBy('nama')
+            ->get(['id_peg', 'nama', 'nik']);
 
-        return view('user.create', compact('roles', 'bagian'));
+        return view('user.create', compact('roles', 'pegawai'));
     }
 
     public function store(Request $request)
     {
+        $pegawaiData = $request->validate([
+            'id_peg' => [
+                'required',
+                'exists:pegawai,id_peg,status,Aktif',
+                Rule::unique('users', 'id_peg'),
+            ],
+        ]);
+        $pegawai = Pegawai::where('status', 'Aktif')
+            ->findOrFail($pegawaiData['id_peg']);
+        $pegawai->load('subbag');
+
+        $idBag = in_array($pegawai->jabatan, ['Manajer', 'A.Manajer', 'Staff'], true)
+            ? ($pegawai->id_bag ?: optional($pegawai->subbag)->id_bag)
+            : null;
+        $idSubag = in_array($pegawai->jabatan, ['A.Manajer', 'Staff'], true)
+            ? $pegawai->id_subag
+            : null;
+
+        $request->merge([
+            'name' => $pegawai->nama,
+            'username' => $pegawai->nik,
+            'jabatan' => $pegawai->jabatan,
+            'id_bag' => $idBag,
+            'id_subag' => $idSubag,
+        ]);
+
         $validated = $this->validateUser($request);
 
         $role = Roles::findOrFail($validated['role']);
         $user = User::create([
+            'id_peg' => $pegawai->id_peg,
             'name' => $validated['name'],
             'username' => $validated['username'],
             'password' => Hash::make($validated['password']),
@@ -110,15 +168,22 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        $validated = $this->validateUser($request, $user);
+        $validated = $request->validate([
+            'name' => 'required|string|max:100',
+            'username' => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('users', 'username')->ignore($user->id),
+            ],
+            'password' => 'nullable|string|min:6|confirmed',
+            'role' => 'required|exists:roles,id',
+        ]);
 
         $role = Roles::findOrFail($validated['role']);
         $user->name = $validated['name'];
         $user->username = $validated['username'];
         $user->id_role = $role->id;
-        $user->jabatan = $validated['jabatan'];
-        $user->id_bag = $validated['id_bag'] ?? null;
-        $user->id_subag = $validated['id_subag'] ?? null;
         if (!empty($validated['password'])) {
             $user->password = Hash::make($validated['password']);
         }

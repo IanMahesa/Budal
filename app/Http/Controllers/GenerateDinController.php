@@ -7,6 +7,7 @@ use App\Models\Pegawai;
 use App\Models\Perijinan;
 use App\Models\SubBagians;
 use App\Models\QrCodes;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
@@ -15,23 +16,68 @@ use Illuminate\Support\Facades\DB;
 
 class GenerateDinController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:geneqr-list', ['only' => ['index', 'show']]);
+        $this->middleware('permission:geneqr-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:geneqr-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:geneqr-delete', ['only' => ['destroy']]);
+        $this->middleware('permission:geneqr-create|geneqr-edit', [
+            'only' => ['getPegawaiBySubag', 'getPerijinanBySubbag'],
+        ]);
+    }
+
     public function index()
     {
+        $user = auth()->user();
+        $isUnitScoped = $user->id_bag
+            || $user->id_subag
+            || in_array($user->jabatan, ['Manajer', 'A.Manajer'], true);
         $qrcode = QrCodes::with(['pegawai', 'subbag'])
-        ->where('jenis_qr', 'SUBBAG')
-        ->orderBy('id_qrcode', 'desc')
-        ->get();
+            ->where('jenis_qr', 'SUBBAG')
+            ->when(
+                $isUnitScoped,
+                function ($query) use ($user) {
+                    $query->whereHas('pegawai', function ($pegawaiQuery) use ($user) {
+                        if ($user->id_bag) {
+                            $pegawaiQuery->where('id_bag', $user->id_bag);
+                        } else {
+                            $pegawaiQuery->whereRaw('1 = 0');
+                        }
 
-    return view('geneqrdin.index', compact('qrcode'));
+                        if ($user->id_subag) {
+                            $pegawaiQuery->where('id_subag', $user->id_subag);
+                        }
+                    });
+                }
+            )
+            ->orderBy('id_qrcode', 'desc')
+            ->get();
+
+        return view('geneqrdin.index', compact('qrcode'));
     }
 
     public function create()
     {
         $bagian = Bagians::orderBy('bag')->get();
+        $user = auth()->user();
+        $jabatan = $user->jabatan;
+        $selectedBagianId = in_array($jabatan, ['Manajer', 'A.Manajer'], true)
+            ? $user->id_bag
+            : null;
+        $selectedSubbagId = $jabatan === 'A.Manajer'
+            ? $user->id_subag
+            : null;
 
         $nextIdQrcode = (int) QrCodes::withoutGlobalScopes()->max('id_qrcode') + 1;
 
-        return view('geneqrdin.create', compact('bagian', 'nextIdQrcode'));
+        return view('geneqrdin.create', compact(
+            'bagian',
+            'nextIdQrcode',
+            'jabatan',
+            'selectedBagianId',
+            'selectedSubbagId'
+        ));
     }
 
     public function getPerijinanBySubbag($id_subag)
@@ -56,71 +102,138 @@ class GenerateDinController extends Controller
         return response()->json($pegawai);
     }
 
+    public function getDinasPegawai(Request $request)
+    {
+        $validated = $request->validate([
+            'id_bag' => 'required|exists:bagian,id_bag',
+            'id_subag' => 'nullable|exists:subag,id_subag',
+        ]);
+        $user = auth()->user();
+        $idBag = (int) $validated['id_bag'];
+        $idSubag = $validated['id_subag'] ?? null;
+
+        if (in_array($user->jabatan, ['Manajer', 'A.Manajer'], true)
+            && (int) $user->id_bag !== $idBag) {
+            abort(403);
+        }
+
+        if ($user->jabatan === 'A.Manajer'
+            && (int) $user->id_subag !== (int) $idSubag) {
+            abort(403);
+        }
+
+        if ($idSubag && !SubBagians::where('id_subag', $idSubag)->where('id_bag', $idBag)->exists()) {
+            abort(422, 'Sub bagian tidak sesuai dengan bagian yang dipilih.');
+        }
+
+        $pegawai = $this->dinasPegawaiQuery($user, $idBag, $idSubag)
+            ->orderBy('nama')
+            ->select('id_peg', 'nama', 'nik', 'status')
+            ->get();
+
+        return response()->json($pegawai);
+    }
+
     public function store(Request $request)
     {
+        $user = $request->user();
+        $subbagRule = in_array($user->jabatan, ['Direktur'], true)
+            ? 'nullable|exists:subag,id_subag'
+            : 'required|exists:subag,id_subag';
+
         $rules = [
-            'jenis_qr' => 'required|in:SUBBAG',
-            'status'   => 'required|in:Aktif,Nonaktif',
-            'ket'      => 'required|string|max:100',
-            'tanggal_dinas' => 'required|date',
-            'id_subag' => 'required|exists:subag,id_subag',
-            'id_peg'   => 'required|array|min:1',
-            'id_peg.*' => 'required|distinct|exists:pegawai,id_peg',
+            'id_bag' => 'required|exists:bagian,id_bag',
+            'id_subag' => $subbagRule,
+            'entries' => 'required|array|min:1',
+            'entries.*.id_peg' => 'required|distinct|exists:pegawai,id_peg',
+            'entries.*.ket' => 'required|string|max:100',
+            'entries.*.tanggal_dinas' => 'required|date',
+            'entries.*.waktu_keluar' => 'required|date_format:H:i',
+            'entries.*.waktu_masuk' => 'required|date_format:H:i|after:entries.*.waktu_keluar',
         ];
 
         $messages = [
-            'jenis_qr.required' => 'Jenis QR wajib diisi.',
-            'jenis_qr.in'       => 'Jenis QR tidak valid.',
-
-            'status.required'   => 'Status wajib diisi.',
-            'status.in'         => 'Status tidak valid.',
-
-            'ket.required'      => 'Keterangan wajib diisi.',
-            'ket.max'           => 'Keterangan maksimal 100 karakter.',
-
+            'id_bag.required' => 'Bagian wajib dipilih.',
             'id_subag.required' => 'Sub Bagian wajib dipilih.',
             'id_subag.exists'   => 'Sub Bagian tidak ditemukan.',
-
-            'id_peg.required'   => 'Minimal pilih 1 pegawai.',
-            'id_peg.array'      => 'Data pegawai tidak valid.',
-            'id_peg.min'        => 'Minimal pilih 1 pegawai.',
-            'id_peg.*.required' => 'Pegawai wajib dipilih.',
-            'id_peg.*.distinct' => 'Pegawai tidak boleh dipilih lebih dari satu kali.',
-            'id_peg.*.exists'   => 'Pegawai tidak ditemukan.',
+            'entries.required' => 'Minimal isi satu data pegawai.',
+            'entries.array' => 'Data pegawai tidak valid.',
+            'entries.min' => 'Minimal isi satu data pegawai.',
+            'entries.*.id_peg.required' => 'Pegawai wajib dipilih pada setiap baris.',
+            'entries.*.id_peg.distinct' => 'Pegawai tidak boleh dipilih lebih dari satu kali.',
+            'entries.*.id_peg.exists' => 'Pegawai tidak ditemukan.',
+            'entries.*.ket.required' => 'Keterangan wajib diisi pada setiap baris.',
+            'entries.*.ket.max' => 'Keterangan maksimal 100 karakter.',
+            'entries.*.tanggal_dinas.required' => 'Tanggal dinas wajib diisi pada setiap baris.',
+            'entries.*.tanggal_dinas.date' => 'Tanggal dinas tidak valid.',
+            'entries.*.waktu_keluar.required' => 'Waktu mulai absen keluar wajib diisi pada setiap baris.',
+            'entries.*.waktu_keluar.date_format' => 'Format waktu keluar tidak valid.',
+            'entries.*.waktu_masuk.required' => 'Batas akhir absen masuk wajib diisi pada setiap baris.',
+            'entries.*.waktu_masuk.date_format' => 'Format waktu masuk tidak valid.',
+            'entries.*.waktu_masuk.after' => 'Batas akhir absen masuk harus setelah waktu keluar.',
         ];
 
         $validated = $request->validate($rules, $messages);
+        $validated['id_subag'] = $validated['id_subag'] ?? null;
 
-        $pegawaiIds = $validated['id_peg'];
+        if (in_array($user->jabatan, ['Manajer', 'A.Manajer'], true)
+            && (int) $user->id_bag !== (int) $validated['id_bag']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'id_bag' => 'Bagian harus sesuai dengan bagian akun Anda.',
+            ]);
+        }
 
-        $pegawaiValidCount = Pegawai::whereIn('id_peg', $pegawaiIds)
-            ->where('id_subag', $validated['id_subag'])
-            ->where('status', 'Aktif')
+        if ($user->jabatan === 'A.Manajer'
+            && (int) $user->id_subag !== (int) $validated['id_subag']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'id_subag' => 'Sub bagian harus sesuai dengan sub bagian akun Anda.',
+            ]);
+        }
+
+        if ($validated['id_subag']
+            && !SubBagians::where('id_subag', $validated['id_subag'])
+                ->where('id_bag', $validated['id_bag'])
+                ->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'id_subag' => 'Sub bagian tidak sesuai dengan bagian yang dipilih.',
+            ]);
+        }
+
+        $entries = array_values($validated['entries']);
+        $pegawaiIds = array_column($entries, 'id_peg');
+
+        $pegawaiValidCount = $this->dinasPegawaiQuery(
+            $user,
+            (int) $validated['id_bag'],
+            $validated['id_subag']
+        )->whereIn('id_peg', $pegawaiIds)
             ->count();
 
         if ($pegawaiValidCount !== count($pegawaiIds)) {
             return back()
                 ->withErrors([
-                    'id_peg' => 'Pastikan semua pegawai aktif dan berasal dari Sub Bagian yang dipilih.'
+                    'id_peg' => 'Pastikan pegawai yang dipilih aktif dan sesuai dengan bagian, sub bagian, serta jabatan yang ditentukan.'
                 ])
                 ->withInput();
         }
 
-        $pegawaiSudahMemilikiQr = QrCodes::withoutGlobalScopes()
-            ->where('jenis_qr', 'SUBBAG')
-            ->whereIn('id_peg', $pegawaiIds)
-            ->whereDate('tanggal_dinas', $validated['tanggal_dinas'])
-            ->exists();
+        foreach ($entries as $index => $entry) {
+            $pegawaiSudahMemilikiQr = QrCodes::withoutGlobalScopes()
+                ->where('jenis_qr', 'SUBBAG')
+                ->where('id_peg', $entry['id_peg'])
+                ->whereDate('tanggal_dinas', $entry['tanggal_dinas'])
+                ->exists();
 
-        if ($pegawaiSudahMemilikiQr) {
-            return back()
-                ->withErrors([
-                    'id_peg' => 'Salah satu pegawai sudah memiliki QR Code DINAS pada tanggal tersebut.'
-                ])
-                ->withInput();
+            if ($pegawaiSudahMemilikiQr) {
+                return back()
+                    ->withErrors([
+                        "entries.{$index}.id_peg" => 'Pegawai sudah memiliki QR Code DINAS pada tanggal tersebut.'
+                    ])
+                    ->withInput();
+            }
         }
 
-        DB::transaction(function () use ($validated, $pegawaiIds) {
+        DB::transaction(function () use ($validated, $entries) {
             $nomorAwal = (int) QrCodes::withoutGlobalScopes()->max('id_qrcode') + 1;
 
             $subbag = \App\Models\SubBagians::find($validated['id_subag']);
@@ -131,7 +244,7 @@ class GenerateDinController extends Controller
                 $namaKartu .= ' - ' . strtoupper($subbag->sub_bag);
             }
 
-            foreach ($pegawaiIds as $index => $idPeg) {
+            foreach ($entries as $index => $entry) {
                 $idQrcode = $nomorAwal + $index;
                 $nomorKartu = str_pad(
                     $idQrcode,
@@ -144,13 +257,15 @@ class GenerateDinController extends Controller
                     'jenis_qr'         => 'SUBBAG',
                     'nama_kartu'       => $namaKartu,
                     'nomor_kartu'      => $nomorKartu,
-                    'id_peg'           => $idPeg,
+                    'id_peg'           => $entry['id_peg'],
                     'id_subag'         => $validated['id_subag'],
                     'id_ijin'          => null,
-                    'status'           => $validated['status'],
-                    'tanggal_dinas'    => $validated['tanggal_dinas'],
+                    'status'           => 'Aktif',
+                    'tanggal_dinas'    => $entry['tanggal_dinas'],
+                    'waktu_keluar'     => $entry['waktu_keluar'],
+                    'waktu_masuk'      => $entry['waktu_masuk'],
                     'tanggal_generate' => Carbon::now(),
-                    'ket'              => ucfirst($validated['ket']),
+                    'ket'              => ucfirst($entry['ket']),
                 ]);
             }
         });
@@ -159,8 +274,38 @@ class GenerateDinController extends Controller
             ->route('geneqrdin.index')
             ->with(
                 'success',
-                'QR Code untuk ' . count($pegawaiIds) . ' pegawai berhasil dibuat.'
+                'QR Code untuk ' . count($entries) . ' pegawai berhasil dibuat.'
             );
+    }
+
+    private function dinasPegawaiQuery(User $user, int $idBag, ?int $idSubag)
+    {
+        $query = Pegawai::where('status', 'Aktif')
+            ->where('id_bag', $idBag);
+
+        if ($user->jabatan === 'Manajer') {
+            return $idSubag
+                ? $query->where('jabatan', 'A.Manajer')->where('id_subag', $idSubag)
+                : $query->whereRaw('1 = 0');
+        }
+
+        if ($user->jabatan === 'A.Manajer') {
+            return $idSubag
+                ? $query->where('jabatan', 'Staff')->where('id_subag', $idSubag)
+                : $query->whereRaw('1 = 0');
+        }
+
+        if ($user->jabatan === 'Direktur') {
+            return $idSubag
+                ? $query->where('jabatan', 'A.Manajer')->where('id_subag', $idSubag)
+                : $query->where('jabatan', 'Manajer');
+        }
+
+        if ($idSubag) {
+            return $query->where('id_subag', $idSubag);
+        }
+
+        return $query->whereRaw('1 = 0');
     }
 
 
@@ -224,6 +369,8 @@ public function update(Request $request, $id)
         'ket'           => 'nullable|string|max:100',
 
         'tanggal_dinas' => 'required|date',
+        'waktu_keluar'  => 'required|date_format:H:i',
+        'waktu_masuk'   => 'required|date_format:H:i|after:waktu_keluar',
     ];
 
 
@@ -323,6 +470,12 @@ public function update(Request $request, $id)
 
         'tanggal_dinas' =>
             $validated['tanggal_dinas'],
+
+        'waktu_keluar' =>
+            $validated['waktu_keluar'],
+
+        'waktu_masuk' =>
+            $validated['waktu_masuk'],
     ]);
 
 
@@ -356,8 +509,35 @@ public function update(Request $request, $id)
 
     public function show($id) 
     { 
-        $qrcode = QrCodes::with([ 'pegawai', 'subbag' ])->findOrFail($id); 
+        $qrcode = QrCodes::with(['pegawai.subbag', 'subbag'])->findOrFail($id);
         
         return view('geneqrdin.show', compact('qrcode')); 
+    }
+
+    public function print(Request $request)
+    {
+        $validated = $request->validate([
+            'id_qrcode' => ['required', 'array', 'min:1'],
+            'id_qrcode.*' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists('qrcode', 'id_qrcode')
+                    ->where('jenis_qr', 'SUBBAG')
+                    ->where('is_delete', 0),
+            ],
+        ]);
+
+        $ids = $validated['id_qrcode'];
+        $qrcode = QrCodes::with(['pegawai.subbag.bagian', 'subbag.bagian'])
+            ->where('jenis_qr', 'SUBBAG')
+            ->whereIn('id_qrcode', $ids)
+            ->get();
+
+        QrCodes::where('jenis_qr', 'SUBBAG')
+            ->whereIn('id_qrcode', $ids)
+            ->update(['tanggal_cetak' => now()]);
+
+        return view('geneqr.print', compact('qrcode'));
     }
 }

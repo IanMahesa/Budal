@@ -11,7 +11,7 @@
 
             <div class="table-divider mb-4"></div>
 
-        <form action="{{ route('role.store') }}" method="POST">
+        <form action="{{ route('role.store') }}" method="POST" id="formSaveUser">
             @csrf
             <div class="role-form">
                 <label for="name"> Role Name </label>
@@ -24,6 +24,12 @@
                     </div>
                 @enderror
             </div>
+
+            @error('permissions')
+                <div class="alert alert-danger mt-3" role="alert">
+                    {{ $message }}
+                </div>
+            @enderror
 
             <div class="table-divider mb-4"></div>
 
@@ -53,11 +59,14 @@
                                 <td>{{ ucwords($feature) }}</td>
                                 @foreach(['list', 'create', 'update', 'delete', 'manage'] as $action)
                                     <td class="text-center align-middle">
+                                        @if($actions[$action] ?? null)
                                         <input type="checkbox"
                                                class="permission-checkbox {{ $action === 'manage' ? 'manage-checkbox' : '' }}"
-                                                                                             data-action="{{ $action }}"
+                                               data-action="{{ $action }}"
                                                name="permissions[]"
-                                               value="{{ $actions[$action] }}">
+                                               value="{{ $actions[$action] }}"
+                                               {{ in_array($actions[$action], (array) old('permissions', []), true) ? 'checked' : '' }}>
+                                        @endif
                                     </td>
                                 @endforeach
                             </tr>

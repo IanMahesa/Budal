@@ -7,6 +7,14 @@ use Illuminate\Http\Request;
 
 class BagianController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:bagian-list', ['only' => ['index', 'show']]);
+        $this->middleware('permission:bagian-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:bagian-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:bagian-delete', ['only' => ['destroy']]);
+    }
+
     public function index()
     {
         $bagian = Bagians::orderBy('id_bag', 'desc')->get();

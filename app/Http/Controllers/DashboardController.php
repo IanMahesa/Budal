@@ -2,11 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Pegawai;
-use App\Models\Perijinan;
 use App\Models\IjinKeluar;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Pegawai;
 
 class DashboardController extends Controller
 {
@@ -14,36 +12,74 @@ class DashboardController extends Controller
     {
         $pegawai = Pegawai::count();
 
-        $pribadi = IjinKeluar::whereHas('perijinan', function ($q) {
-            $q->where('jenis', 'PRIBADI');
-        })->whereDate('tanggal_keluar', today())->count();
+        $todayCounts = IjinKeluar::leftJoin(
+            'perijinan',
+            'ijin_keluar.id_ijin',
+            '=',
+            'perijinan.id_ijin'
+        )
+            ->whereDate('ijin_keluar.tanggal_keluar', today())
+            ->selectRaw("
+                SUM(CASE
+                    WHEN perijinan.jenis = 'PRIBADI'
+                        OR (perijinan.jenis IS NULL AND ijin_keluar.jenis_scan = 'PEGAWAI')
+                    THEN 1 ELSE 0
+                END) as pribadi
+            ")
+            ->selectRaw("
+                SUM(CASE
+                    WHEN perijinan.jenis = 'DINAS'
+                        OR (perijinan.jenis IS NULL AND ijin_keluar.jenis_scan = 'SUBBAG')
+                    THEN 1 ELSE 0
+                END) as dinas
+            ")
+            ->first();
 
-        $dinas = IjinKeluar::whereHas('perijinan', function ($q) {
-            $q->where('jenis', 'DINAS');
-        })->whereDate('tanggal_keluar', today())->count();
+        $pribadi = (int) $todayCounts->pribadi;
+        $dinas = (int) $todayCounts->dinas;
 
-        $keluar = IjinKeluar::where('status', 'Keluar')
-            ->whereDate('tanggal_keluar', today())
+        $keluar = IjinKeluar::where('status', IjinKeluar::STATUS_KELUAR)
+            ->whereDate('ijin_keluar.tanggal_keluar', today())
             ->count();
 
-        // Grafik Bulanan //
+        $monthlyCounts = IjinKeluar::leftJoin(
+            'perijinan',
+            'ijin_keluar.id_ijin',
+            '=',
+            'perijinan.id_ijin'
+        )
+            ->whereYear('ijin_keluar.tanggal_keluar', now()->year)
+            ->selectRaw('MONTH(ijin_keluar.tanggal_keluar) as bulan')
+            ->selectRaw("
+                SUM(CASE
+                    WHEN perijinan.jenis = 'PRIBADI'
+                        OR (perijinan.jenis IS NULL AND ijin_keluar.jenis_scan = 'PEGAWAI')
+                    THEN 1 ELSE 0
+                END) as pribadi
+            ")
+            ->selectRaw("
+                SUM(CASE
+                    WHEN perijinan.jenis = 'DINAS'
+                        OR (perijinan.jenis IS NULL AND ijin_keluar.jenis_scan = 'SUBBAG')
+                    THEN 1 ELSE 0
+                END) as dinas
+            ")
+            ->groupBy(DB::raw('MONTH(ijin_keluar.tanggal_keluar)'))
+            ->get()
+            ->keyBy('bulan');
+
         $grafikPribadi = [];
         $grafikDinas = [];
-
         for ($bulan = 1; $bulan <= 12; $bulan++) {
-
-            $grafikPribadi[] = IjinKeluar::join('perijinan', 'ijin_keluar.id_ijin', '=', 'perijinan.id_ijin')
-                ->whereYear('tanggal_keluar', date('Y'))
-                ->whereMonth('tanggal_keluar', $bulan)
-                ->where('perijinan.jenis', 'PRIBADI')
-                ->count();
-
-            $grafikDinas[] = IjinKeluar::join('perijinan', 'ijin_keluar.id_ijin', '=', 'perijinan.id_ijin')
-                ->whereYear('tanggal_keluar', date('Y'))
-                ->whereMonth('tanggal_keluar', $bulan)
-                ->where('perijinan.jenis', 'DINAS')
-                ->count();
+            $counts = $monthlyCounts->get($bulan);
+            $grafikPribadi[] = (int) optional($counts)->pribadi;
+            $grafikDinas[] = (int) optional($counts)->dinas;
         }
+
+        $lembur = DB::table('lembur')
+            ->where('is_delete', 0)
+            ->select('status')
+            ->get();
 
         return view('dashboard.index', compact(
             'pegawai',
@@ -51,7 +87,8 @@ class DashboardController extends Controller
             'dinas',
             'keluar',
             'grafikPribadi',
-            'grafikDinas'
+            'grafikDinas',
+            'lembur'
         ));
     }
 }

@@ -21,6 +21,11 @@
                 </div>
             @endif
 
+            <div class="alert alert-info mx-3 mt-3">
+                Akun user akan dibuat otomatis dengan username NIK dan password awal <strong>12345678</strong>.
+                Role dapat ditambahkan melalui menu User.
+            </div>
+
             <form method="POST" action="{{ route('pegawai.store') }}" autocomplete="off" id="formSaveUser">
                 @csrf
                 <div class="row">
@@ -83,8 +88,8 @@
                     </div>
 
                     <div class="col-lg-6 mb-3">
-                        <label>Bagian</label>
-                        <select name="id_bag" id="id_bag" class="form-select" required>
+                        <label>Bagian <span id="bagian-required" class="text-danger">*</span></label>
+                        <select name="id_bag" id="id_bag" class="form-select">
                             <option value="">-- Pilih Bagian --</option>
                             @foreach($bagian as $item)
                                 <option value="{{ $item->id_bag }}" {{ old('id_bag') == $item->id_bag ? 'selected' : '' }}>
@@ -94,17 +99,19 @@
                         </select>
                     </div>
 
-                    <div class="col-md-6 mb-3">
-                        <label>Sub Bagian</label>
+                    <div class="col-md-6 mb-3" id="subbag-field">
+                        <label>Sub Bagian <span id="subbag-required" class="text-danger">*</span></label>
                         <select name="id_subag"
                                 id="id_subag"
                                 class="form-select"
-                                required
                                 data-selected-value="{{ old('id_subag') }}"
                                 {{ old('id_bag') ? '' : 'disabled' }}>
                             <option value="">-- Pilih Sub Bagian --</option>
                         </select>
                     </div> 
+                    <div class="col-12 mb-3 text-muted" id="manager-scope" hidden>
+                        Manajer memiliki cakupan ke seluruh subbagian pada bagian yang dipilih.
+                    </div>
 
                 </div>
 
@@ -133,6 +140,11 @@
 document.addEventListener('DOMContentLoaded', function () {
     const bagianSelect = document.getElementById('id_bag');
     const subBagSelect = document.getElementById('id_subag');
+    const jabatanSelect = document.querySelector('[name="jabatan"]');
+    const subBagField = document.getElementById('subbag-field');
+    const managerScope = document.getElementById('manager-scope');
+    const bagianRequired = document.getElementById('bagian-required');
+    const subBagRequired = document.getElementById('subbag-required');
 
     function loadSubBagian(idBag) {
         if (!idBag) {
@@ -164,13 +176,37 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    function updateOrganizationFields() {
+        const jabatan = jabatanSelect.value;
+        const isDirector = jabatan === 'Direktur';
+        const isManager = jabatan === 'Manajer';
+        const requiresSubBag = jabatan === 'A.Manajer' || jabatan === 'Staff';
+
+        bagianSelect.required = !isDirector;
+        bagianRequired.hidden = isDirector;
+        subBagField.hidden = isManager;
+        managerScope.hidden = !isManager;
+        subBagSelect.required = requiresSubBag;
+        subBagRequired.hidden = !requiresSubBag;
+
+        if (isManager) {
+            subBagSelect.value = '';
+            subBagSelect.disabled = true;
+        } else if (bagianSelect.value) {
+            loadSubBagian(bagianSelect.value);
+        } else {
+            subBagSelect.innerHTML = '<option value="">-- Pilih Sub Bagian --</option>';
+            subBagSelect.disabled = true;
+        }
+    }
+
     bagianSelect.addEventListener('change', function () {
-        loadSubBagian(this.value);
+        subBagSelect.setAttribute('data-selected-value', '');
+        updateOrganizationFields();
     });
 
-    if (bagianSelect.value) {
-        loadSubBagian(bagianSelect.value);
-    }
+    jabatanSelect.addEventListener('change', updateOrganizationFields);
+    updateOrganizationFields();
 });
 </script>
 

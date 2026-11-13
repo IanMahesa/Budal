@@ -50,8 +50,8 @@
                             <th>Tanggal</th>
                             <th>Pegawai</th>
                             <th>Sub Bagian</th>
-                            <th>Ijin</th>
-                            <th class="text-center">Jenis</th>
+                            <th class="text-center">Ijin</th>
+                            <th>Keterangan</th>
                             <th class="text-center">Jam Keluar</th>
                             <th class="text-center">Jam Masuk</th>
                             <th class="text-center">Status</th>
@@ -80,11 +80,17 @@
                                 <td>
                                     {{ optional($item->subbag)->sub_bag ?? '-' }}
                                 </td>
-                                <td>
-                                    {{ optional($item->perijinan)->izin ?? '-' }}
+                                <td class="text-center">
+                                    @if (optional($item->qrcode)->jenis_qr == 'SUBBAG')
+                                        <span class="badge bg-warning text-dark">DINAS</span>
+                                    @elseif (optional($item->qrcode)->jenis_qr == 'PEGAWAI')
+                                        <span class="badge bg-success">PRIBADI</span>
+                                    @else
+                                        -
+                                    @endif
                                 </td>
                                 <td class="text-center">
-                                    {{ optional($item->perijinan)->jenis ?? '-' }}
+                                    {{ optional($item->qrcode)->ket ?? '-' }}
                                 </td>
                                 <td class="text-center">
                                     {{ $item->jam_keluar ? \Carbon\Carbon::parse($item->jam_keluar)->format('H:i:s') : '-' }}

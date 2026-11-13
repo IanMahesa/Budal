@@ -8,16 +8,51 @@ use App\Models\Perijinan;
 use App\Models\SubBagians;
 use App\Models\QrCodes;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class GenerateController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:geneqr-list', ['only' => ['index', 'show', 'print']]);
+        $this->middleware('permission:geneqr-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:geneqr-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:geneqr-delete', ['only' => ['destroy']]);
+        $this->middleware('permission:geneqr-create|geneqr-edit', [
+            'only' => ['getPegawaiBySubag', 'getPerijinanBySubbag'],
+        ]);
+    }
+
     public function index()
     {
+        DB::table('qrcode')
+            ->where('jenis_qr', 'PEGAWAI')
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('pegawai')
+                    ->whereColumn('pegawai.id_peg', 'qrcode.id_peg')
+                    ->where('pegawai.is_delete', 1);
+            })
+            ->update(['is_delete' => 1]);
+
+        DB::table('qrcode')
+            ->where('jenis_qr', 'PEGAWAI')
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('pegawai')
+                    ->whereColumn('pegawai.id_peg', 'qrcode.id_peg')
+                    ->where('pegawai.is_delete', 0);
+            })
+            ->update(['is_delete' => 0]);
+
         $qrcode = QrCodes::with(['pegawai.subbag'])
                     ->where('jenis_qr', 'PEGAWAI')
+                    ->whereHas('pegawai', function ($query) {
+                        $query->where('status', 'Aktif');
+                    })
                     ->orderBy('id_qrcode','desc')
                     ->get();
 
@@ -27,6 +62,10 @@ class GenerateController extends Controller
    public function create()
     {
         $pegawai = Pegawai::where('status', 'Aktif')
+            ->whereDoesntHave('qrcode', function ($query) {
+                $query->withoutGlobalScopes();
+                $query->where('jenis_qr', 'PEGAWAI');
+            })
             ->orderBy('nama')
             ->get();
 
@@ -70,7 +109,11 @@ class GenerateController extends Controller
         ];
 
         if ($request->jenis_qr == 'PEGAWAI') {
-            $rules['id_peg'] = 'required|exists:pegawai,id_peg,status,Aktif';
+            $rules['id_peg'] = [
+                'required',
+                'exists:pegawai,id_peg,status,Aktif',
+                Rule::unique('qrcode', 'id_peg')->where('jenis_qr', 'PEGAWAI'),
+            ];
         } else {
             $rules['id_subag'] = 'required|exists:subag,id_subag';
             $rules['id_ijin'] = 'nullable|exists:perijinan,id_ijin';
@@ -87,14 +130,16 @@ class GenerateController extends Controller
             $idPeg = $request->id_peg;
         }
 
+        $idSubag = $request->jenis_qr == 'SUBBAG'
+            ? $validated['id_subag']
+            : Pegawai::where('id_peg', $idPeg)->value('id_subag');
+
         QrCodes::create([
             'jenis_qr'         => $validated['jenis_qr'],
             'nama_kartu'       => strtoupper($validated['nama_kartu']),
             'nomor_kartu'      => strtoupper($validated['nomor_kartu']),
             'id_peg'           => $idPeg,
-            'id_subag'         => $request->jenis_qr == 'SUBBAG'
-                                    ? $validated['id_subag']
-                                    : null,
+            'id_subag'         => $idSubag,
             'id_ijin'           => $validated['jenis_qr'] == 'SUBBAG'
                                     ? ($validated['id_ijin'] ?? null)
                                     : null,
@@ -159,6 +204,10 @@ class GenerateController extends Controller
         } elseif ($request->filled('id_peg')) {
             $idPeg = $request->id_peg;
         }
+
+        $idSubag = $request->jenis_qr == 'SUBBAG'
+            ? $validated['id_subag']
+            : Pegawai::where('id_peg', $idPeg)->value('id_subag');
         
         if ($request->jenis_qr == 'SUBBAG' && $idPeg) {
             $pegawaiSudahMemilikiQr = QrCodes::where('jenis_qr', 'SUBBAG')
@@ -178,7 +227,7 @@ class GenerateController extends Controller
             'nama_kartu'  => strtoupper($validated['nama_kartu']),
             'nomor_kartu' => strtoupper($validated['nomor_kartu']),
             'id_peg'      => $idPeg,
-            'id_subag'    => $request->jenis_qr == 'SUBBAG' ? $validated['id_subag'] : null,
+            'id_subag'    => $idSubag,
             'id_ijin'     => $request->jenis_qr == 'SUBBAG' ? ($validated['id_ijin'] ?? null) : null,
             'status'      => $validated['status'],
         ]);

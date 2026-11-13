@@ -14,7 +14,7 @@
             @if ($errors->any())
                 <div class="alert alert-danger">
                     <ul class="mb-0">
-                        @foreach ($errors->all() as $error)
+                        @foreach ($errors->all() as$error)
                             <li>{{ $error }}</li>
                         @endforeach
                     </ul>
@@ -44,23 +44,25 @@
                     </div>
                 </div>
 
-                <div class="mb-3" id="pegawai_div">
+                <!-- Custom Autocomplete Nama Pegawai -->
+                <div class="mb-3 position-relative" id="pegawai_div">
                     <label class="form-label">Nama Pegawai</label>
-                    <select id="id_peg" name="id_peg" class="form-select @error('id_peg') is-invalid @enderror" required>
-                        <option value="">-- Pilih Pegawai --</option>
-                        @foreach($pegawai as $item)
-                            <option value="{{ $item->id_peg }}"
-                                data-nik="{{ $item->nik }}"
-                                data-status="{{ $item->status }}"
-                                data-nama="{{ $item->nama }}"
-                                {{ old('id_peg') == $item->id_peg ? 'selected' : '' }}>
-                                {{ $item->nama }} - {{ $item->nik }}
-                            </option>
-                        @endforeach
-                    </select>
+                    
+                    <!-- Hidden input untuk menyimpan ID Pegawai yang dikirim ke server -->
+                    <input type="hidden" id="id_peg" name="id_peg" value="{{ old('id_peg') }}" required>
+                    
+                    <!-- Input teks untuk pencarian -->
+                    <input type="text" id="search_pegawai" 
+                           class="form-control @error('id_peg') is-invalid @enderror" 
+                           placeholder="Cari nama atau NIK pegawai" 
+                           autocomplete="off">
+
+                    <!-- Kotak dropdown hasil pencarian (menyesuaikan gaya seperti gambar) -->
+                    <div id="pegawai_dropdown" class="shadow rounded-3 p-1 mt-1" style="display: none; max-height: 220px; overflow-y: auto; background-color: #1e1e1e; color: #fff; position: absolute; width: 100%; z-index: 1050;">
+                    </div>
 
                     @error('id_peg')
-                        <div class="invalid-feedback">
+                        <div class="invalid-feedback d-block">
                             {{ $message }}
                         </div>
                     @enderror
@@ -81,7 +83,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Nomor Kartu</label>
+                    <label class="form-label">Nomor Kartu (NIK)</label>
                     <input type="text" name="nomor_kartu"
                         class="form-control @error('nomor_kartu') is-invalid @enderror"
                         style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()"
@@ -92,7 +94,7 @@
                         {{ $message }}
                     </div>
                     @enderror
-                </div>                  
+                </div>                
 
                 <div class="table-divider mt-4"></div>
 
@@ -110,36 +112,111 @@
 </div>
 @endsection
 
+@php
+    $pegawaiData = $pegawai->map(function ($item) {
+        return [
+            'id' => (string) $item->id_peg,
+            'nama' => $item->nama,
+            'nik' => $item->nik,
+            'status' => $item->status ?? '',
+        ];
+    })->values();
+@endphp
+
 @push('scripts')
 <script>
+// Data pegawai dari backend Laravel
+const pegawaiList = @json($pegawaiData);
+
 $(document).ready(function () {
-    // Saat pegawai dipilih, otomatis mengisi Nama Kartu dan Nomor Kartu
-    $('#id_peg').change(function () {
-        let opt = $(this).find('option:selected');
-        
-        // Kosongkan input jika memilih default option "-- Pilih Pegawai --"
-        if (!opt || !opt.val()) {
-            $('input[name="nama_kartu"]').val('');
-            $('input[name="nomor_kartu"]').val('');
+    const $searchInput =$('#search_pegawai');
+    const $dropdown =$('#pegawai_dropdown');
+    const $hiddenId =$('#id_peg');
+
+    // Jika ada old('id_peg') saat validasi error, set teks awalnya
+    if ($hiddenId.val()) {
+        let selected = pegawaiList.find(p => p.id == $hiddenId.val());
+        if (selected) {
+            $searchInput.val(selected.nama + ' - ' + selected.nik);
+            fillData(selected);
+        }
+    }
+
+    // Event saat mengetik di input pencarian
+    $searchInput.on('input', function () {
+        let keyword = $(this).val().toLowerCase().trim();$hiddenId.val(''); // Reset ID jika user mengetik ulang
+
+        // Jika input kosong, kosongkan juga kartu & status
+        if (!keyword) {
+            $dropdown.hide();
+            clearCardData();
             return;
         }
 
-        let nama = opt.attr('data-nama') || '';
-        let nik = opt.attr('data-nik') || '';
-        let status = opt.attr('data-status') || '';
+        // Filter data berdasarkan nama atau NIK
+        let filtered = pegawaiList.filter(p => 
+            String(p.nama || '').toLowerCase().includes(keyword) ||
+            String(p.nik || '').toLowerCase().includes(keyword)
+        );
 
-        $('input[name="nama_kartu"]').val(nama.toUpperCase());
-        $('input[name="nomor_kartu"]').val(nik.toUpperCase());
-        
-        if (status) {
-            $('#status_input').val(status);
-            $('#status_display').val(status);
+        if (filtered.length > 0) {
+            $dropdown.empty();
+            filtered.forEach(p => {
+                $('<div>', {
+                    class: 'pegawai-item px-3 py-2 rounded',
+                    text: `${p.nama} - ${p.nik}`,
+                    css: { cursor: 'pointer', transition: 'background 0.2s' }
+                }).data('pegawai', p).appendTo($dropdown);
+            });
+            $dropdown.show();
+        } else {
+            $dropdown.html('<div class="px-3 py-2 text-muted">Pegawai tidak ditemukan</div>').show();
         }
     });
 
-    // Jalankan otomatis jika terjadi validasi error / ada data old('id_peg') sebelumnya
-    if ($('#id_peg').val()) {
-        $('#id_peg').trigger('change');
+    // Event ketika salah satu pilihan pada dropdown diklik
+    $(document).on('click', '.pegawai-item', function () {
+        let pegawai = $(this).data('pegawai');
+        let id = pegawai.id;
+        let nama = pegawai.nama;
+        let nik = pegawai.nik;
+        let status = pegawai.status;
+
+        if (!id) return;
+
+        // Set nilai ke input & hidden input
+        $hiddenId.val(id);
+        $searchInput.val(nama + ' - ' + nik);$dropdown.hide();
+
+        // Isi otomatis Nama Kartu, Nomor Kartu, dan Status
+        fillData({ nama, nik, status });
+    });
+
+    // Efek hover pada item dropdown
+    $(document).on('mouseenter', '.pegawai-item', function () {
+        $(this).css('background-color', 'rgba(255, 255, 255, 0.1)'); }).on('mouseleave', '.pegawai-item', function () {$(this).css('background-color', 'transparent');
+    });
+
+    // Sembunyikan dropdown jika klik di luar area
+    $(document).on('click', function (e) {
+        if (!$(e.target).closest('#pegawai_div').length) {
+            $dropdown.hide();
+        }
+    });
+
+    function fillData(data) {
+        $('input[name="nama_kartu"]').val(String(data.nama || '').toUpperCase());
+        $('input[name="nomor_kartu"]').val(String(data.nik || '').toUpperCase());
+        
+        if (data.status) {
+            $('#status_input').val(data.status);
+            $('#status_display').val(data.status);
+        }
+    }
+
+    function clearCardData() {
+        $('input[name="nama_kartu"]').val('');
+        $('input[name="nomor_kartu"]').val('');
     }
 });
 </script>

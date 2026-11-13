@@ -13,6 +13,11 @@ use App\Models\Pegawai;
 
 class RekapController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:rekap-list');
+    }
+
     public function index()
     {
         $bagian = Bagians::orderBy('bag')->get();
@@ -32,7 +37,7 @@ class RekapController extends Controller
             ->join('pegawai as p', 'ik.id_peg', '=', 'p.id_peg')
             ->join('subag as sb', 'ik.id_subag', '=', 'sb.id_subag')
             ->join('bagian as b', 'ik.id_bag', '=', 'b.id_bag')
-            ->join('perijinan as i', 'ik.id_ijin', '=', 'i.id_ijin')
+            ->leftJoin('perijinan as i', 'ik.id_ijin', '=', 'i.id_ijin')
 
             ->select(
                 'p.id_peg',
@@ -42,79 +47,134 @@ class RekapController extends Controller
                 'b.bag',
                 'sb.sub_bag',
 
-                DB::raw("COUNT(CASE WHEN i.jenis='PRIBADI' THEN 1 END) as jml_pribadi"),
+                DB::raw("COUNT(CASE WHEN i.jenis='PRIBADI' OR (i.jenis IS NULL AND ik.jenis_scan='PEGAWAI') THEN 1 END) as jml_pribadi"),
 
-                DB::raw("SUM(CASE WHEN i.jenis='PRIBADI'
+                DB::raw("SUM(CASE WHEN i.jenis='PRIBADI' OR (i.jenis IS NULL AND ik.jenis_scan='PEGAWAI')
                         THEN ik.durasi_menit ELSE 0 END)
                         as durasi_pribadi"),
 
-                DB::raw("COUNT(CASE WHEN i.jenis='DINAS' THEN 1 END)
+                DB::raw("COUNT(CASE WHEN i.jenis='DINAS' OR (i.jenis IS NULL AND ik.jenis_scan='SUBBAG') THEN 1 END)
                         as jml_dinas"),
 
-                DB::raw("SUM(CASE WHEN i.jenis='DINAS'
+                DB::raw("SUM(CASE WHEN i.jenis='DINAS' OR (i.jenis IS NULL AND ik.jenis_scan='SUBBAG')
                         THEN ik.durasi_menit ELSE 0 END)
                         as durasi_dinas"),
 
                 DB::raw("SUM(ik.durasi_menit) as total_durasi")
             );
 
-            $applyFilter = filter_var($request->input('filter_applied', false), FILTER_VALIDATE_BOOLEAN);
+        $applyDateFilters = function ($query, $dateColumn) use ($request) {
+            if (!filter_var($request->input('filter_applied', false), FILTER_VALIDATE_BOOLEAN)) {
+                return;
+            }
+
             $periode = $request->input('periode', 'harian');
-            $tanggal = $request->input('tanggal');
-            $bulan = $request->input('bulan');
-            $tahun = $request->input('tahun');
-            $tanggalAwal = $request->input('tanggal_awal');
-            $tanggalAkhir = $request->input('tanggal_akhir');
-
-            if ($applyFilter) {
-                if ($periode == 'harian') {
-                    if (!empty($tanggal)) {
-                        $query->whereDate('ik.tanggal_keluar', $tanggal);
-                    }
-                } elseif ($periode == 'bulanan') {
-                    if (!empty($bulan)) {
-                        $query->whereMonth('ik.tanggal_keluar', $bulan);
-                    }
-                    if (!empty($tahun)) {
-                        $query->whereYear('ik.tanggal_keluar', $tahun);
-                    }
-                } elseif ($periode == 'tahunan') {
-                    if (!empty($tahun)) {
-                        $query->whereYear('ik.tanggal_keluar', $tahun);
-                    }
-                } elseif ($periode == 'range') {
-                    if (!empty($tanggalAwal) && !empty($tanggalAkhir)) {
-                        $query->whereBetween('ik.tanggal_keluar', [$tanggalAwal, $tanggalAkhir]);
-                    }
+            if ($periode === 'harian' && $request->filled('tanggal')) {
+                $query->whereDate($dateColumn, $request->input('tanggal'));
+            } elseif ($periode === 'bulanan') {
+                if ($request->filled('bulan')) {
+                    $query->whereMonth($dateColumn, $request->input('bulan'));
                 }
+                if ($request->filled('tahun')) {
+                    $query->whereYear($dateColumn, $request->input('tahun'));
+                }
+            } elseif ($periode === 'tahunan' && $request->filled('tahun')) {
+                $query->whereYear($dateColumn, $request->input('tahun'));
+            } elseif ($periode === 'range'
+                && $request->filled('tanggal_awal')
+                && $request->filled('tanggal_akhir')) {
+                $query->whereBetween($dateColumn, [
+                    $request->input('tanggal_awal'),
+                    $request->input('tanggal_akhir'),
+                ]);
+            }
+        };
+
+        $applyDateFilters($query, 'ik.tanggal_keluar');
+
+        if ($request->filled('id_bag')) {
+            $query->where('ik.id_bag', $request->id_bag);
+        }
+
+        if ($request->filled('id_subag')) {
+            $query->where('ik.id_subag', $request->id_subag);
+        }
+
+        if ($request->filled('id_peg')) {
+            $query->where('ik.id_peg', $request->id_peg);
+        }
+
+        $query->whereNotNull('ik.jam_masuk');
+
+        $data = $query
+            ->groupBy(
+                'p.id_peg',
+                'p.nik',
+                'p.nama',
+                'b.bag',
+                'sb.sub_bag'
+            )
+            ->orderBy('p.nama')
+            ->get()
+            ->keyBy('id_peg');
+
+        $lemburQuery = DB::table('detail_lembur as dl')
+            ->join('lembur as l', 'dl.id_lembur', '=', 'l.id_lembur')
+            ->join('pegawai as p', 'dl.id_peg', '=', 'p.id_peg')
+            ->join('subag as sb', 'p.id_subag', '=', 'sb.id_subag')
+            ->join('bagian as b', 'sb.id_bag', '=', 'b.id_bag')
+            ->where('dl.is_delete', 0)
+            ->where('l.is_delete', 0)
+            ->where('dl.status_kehadiran', 'Selesai')
+            ->select(
+                'p.id_peg',
+                'p.nik',
+                'p.nama',
+                'b.bag',
+                'sb.sub_bag',
+                DB::raw('COUNT(dl.id_detail_lembur) as jml_lembur'),
+                DB::raw('SUM(COALESCE(dl.total_menit, 0)) as durasi_lembur')
+            );
+
+        $applyDateFilters($lemburQuery, 'l.tanggal_lembur');
+
+        if ($request->filled('id_bag')) {
+            $lemburQuery->where('l.id_bag', $request->input('id_bag'));
+        }
+        if ($request->filled('id_subag')) {
+            $lemburQuery->where('l.id_subag', $request->input('id_subag'));
+        }
+        if ($request->filled('id_peg')) {
+            $lemburQuery->where('dl.id_peg', $request->input('id_peg'));
+        }
+
+        $lemburData = $lemburQuery
+            ->groupBy('p.id_peg', 'p.nik', 'p.nama', 'b.bag', 'sb.sub_bag')
+            ->get();
+
+        foreach ($data as $row) {
+            $row->jml_lembur = 0;
+            $row->durasi_lembur = 0;
+        }
+
+        foreach ($lemburData as $row) {
+            if (isset($data[$row->id_peg])) {
+                $data[$row->id_peg]->jml_lembur = (int) $row->jml_lembur;
+                $data[$row->id_peg]->durasi_lembur = (int) $row->durasi_lembur;
+                continue;
             }
 
-            if ($request->filled('id_bag')) {
-                $query->where('ik.id_bag', $request->id_bag);
-            }
+            $row->jml_pribadi = 0;
+            $row->durasi_pribadi = 0;
+            $row->jml_dinas = 0;
+            $row->durasi_dinas = 0;
+            $row->total_durasi = 0;
+            $row->jml_lembur = (int) $row->jml_lembur;
+            $row->durasi_lembur = (int) $row->durasi_lembur;
+            $data->put($row->id_peg, $row);
+        }
 
-            if ($request->filled('id_subag')) {
-                $query->where('ik.id_subag', $request->id_subag);
-            }
-
-            if ($request->filled('id_peg')) {
-                $query->where('ik.id_peg', $request->id_peg);
-            }
-
-            $query->whereNotNull('ik.jam_masuk');
-
-            $data = $query
-                ->groupBy(
-                    'p.id_peg',
-                    'p.nik',
-                    'p.nama',
-                    'b.bag',
-                    'sb.sub_bag'
-                )
-                ->orderBy('p.nama')
-                ->get();
-
-            return response()->json($data);
+        return response()->json($data->sortBy('nama')->values());
     }
 
     public function getPegawai(Request $request)

@@ -9,6 +9,18 @@ use Illuminate\Validation\Rule;
 
 class SubagController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('permission:subag-list', ['only' => ['index', 'show']]);
+        $this->middleware('permission:subag-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:subag-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:subag-delete', ['only' => ['destroy']]);
+        $this->middleware(
+            'permission:subag-list|subag-create|subag-edit|user-create|user-edit|pegawai-create|pegawai-edit|perijinan-create|perijinan-edit|geneqr-create|geneqr-edit|rekap-list',
+            ['only' => ['getSubag']]
+        );
+    }
+
      public function index()
     {
         $bagian = Bagians::with([

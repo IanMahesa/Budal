@@ -12,11 +12,15 @@ use App\Http\Controllers\GenerateDinController;
 use App\Http\Controllers\ScanController;
 use App\Http\Controllers\IjinKeluarController;
 use App\Http\Controllers\RekapController;
+use App\Http\Controllers\RekapPegawaiController;
+use App\Http\Controllers\RekapLemburController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\QrCodeController;
 use App\Http\Controllers\NotifikasiIjinController;
+use App\Http\Controllers\LemburController;
+use App\Http\Controllers\GenLemburController;
 
 /*
 |--------------------------------------------------------------------------
@@ -50,7 +54,7 @@ Route::post('/notifikasi-ijin/read-all', [NotifikasiIjinController::class, 'read
     ->name('notifikasi.readAll');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
-    ->middleware('auth')
+    ->middleware('permission:dashboard-list')
     ->name('dashboard.index');
 
 Route::get('/admin', [AdminController::class, 'index'])->name('admin.index');
@@ -129,14 +133,45 @@ Route::resource('geneqr', GenerateController::class)->names([
 
 // Generate QR Code
 Route::post('/qrcode/generate', [GenerateController::class, 'generate'])
+    ->middleware('permission:geneqr-create')
     ->name('qrcode.generate');
 
 // Cetak QR Code
 Route::post('/qrcode/print', [GenerateController::class, 'print'])
+    ->middleware('permission:geneqr-list')
     ->name('qrcode.print');
 
 Route::get('/get-pegawai/{id_subag}', [GenerateDinController::class, 'getPegawaiBySubag'])
     ->name('qrcode.get-pegawai');
+Route::get('/get-pegawai-dinas', [GenerateDinController::class, 'getDinasPegawai'])
+    ->name('qrcode.dinas.get-pegawai');
+
+Route::get('/lembur', [LemburController::class, 'index'])
+        ->name('lembur.index');
+
+Route::post('/lembur', [LemburController::class, 'store'])
+        ->name('lembur.store');
+
+Route::get('/genlembur', [GenLemburController::class, 'index'])
+    ->name('genlembur.index');
+
+Route::get('/genlembur/create', [GenLemburController::class, 'create'])
+    ->name('genlembur.create');
+
+Route::post('/genlembur', [GenLemburController::class, 'store'])
+    ->name('genlembur.store');
+
+Route::get('/genlembur/{id}/edit', [GenLemburController::class, 'edit'])
+    ->name('genlembur.edit');
+
+Route::put('/genlembur/{id}', [GenLemburController::class, 'update'])
+    ->name('genlembur.update');
+
+Route::get('/genlembur/{id}', [GenLemburController::class, 'show'])
+    ->name('genlembur.show');
+
+Route::delete('/genlembur/{id}', [GenLemburController::class, 'destroy'])
+    ->name('genlembur.destroy');
 
 Route::get('/get-perijinan/{id_subag}', [GenerateDinController::class, 'getPerijinanBySubbag'])
     ->name('qrcode.get-perijinan');
@@ -153,20 +188,23 @@ Route::resource('geneqrdin', GenerateDinController::class)->names([
 
 // Generate QR Code
 Route::post('/qrcode/generate', [GenerateDinController::class, 'generate'])
+    ->middleware('permission:geneqr-create')
     ->name('qrcode.generate');
 
 // Cetak QR Code
-Route::post('/qrcode/print', [GenerateDinController::class, 'print'])
-    ->name('qrcode.print');
+Route::post('/qrcode/print-dinas', [GenerateDinController::class, 'print'])
+    ->middleware('permission:geneqr-list')
+    ->name('qrcode.dinas.print');
 
-Route::get('/scan', [ScanController::class, 'index'])->name('scan.index');
+Route::get('/scan', [ScanController::class, 'index'])
+    ->name('scan.index');
 Route::post('/scan/proses', [ScanController::class, 'proses'])->name('scan.proses');
-Route::post('/scan/simpan', [ScanController::class,'simpan'])
-    ->name('scan.simpan');
 
 Route::get('/keluar/export', [IjinKeluarController::class, 'export'])
     ->name('keluar.export');
 Route::resource('keluar', IjinKeluarController::class);
+Route::get('/lembur/export', [LemburController::class, 'export'])
+    ->name('lembur.export');
 
 Route::post('/rekap/data', [RekapController::class,'data'])
     ->name('rekap.data');
@@ -178,6 +216,11 @@ Route::get('/rekap/excel', [RekapController::class,'excel'])
     ->name('rekap.excel');
 Route::get('/rekap/export', [RekapController::class, 'export'])
     ->name('rekap.export');
+Route::get('/rekappeg', [RekapPegawaiController::class, 'index'])
+    ->name('rekappeg.index');
+Route::get('/rekaplem', [RekapLemburController::class, 'index'])
+    ->name('rekaplem.index');
 Route::get('/qrcode', [QrCodeController::class, 'index'])
+    ->middleware('permission:qrcode-list')
     ->name('qrcode.index');
 });

@@ -4,6 +4,7 @@
 
 @section('content')
 
+<div class="container">
 <div class="card tabel-card">
         <div class="card-body table-responsive">
 
@@ -197,6 +198,7 @@
 
         </div>
     </div>
+</div>
 </div>
 
 

@@ -1,13 +1,11 @@
 @extends('partials.all')
 
-@section('title','Data Ijin Keluar')
+@section('title','Laporan Ijin Keluar')
 
 @section('content')
 
 <div class="container-fluid">
     <div class="card shadow mb-4">
-
-        {{-- HEADER --}}
         <div class="card-header custom-header">
             <h5 class="mb-0">
                 <i class="fa fa-chart-bar me-2"></i>
@@ -15,36 +13,26 @@
             </h5>
         </div>
 
-        {{-- FILTER --}}
         <div class="card-body">
-
             <form method="GET"
                   action="{{ route('keluar.index') }}">
-
                 <div class="row g-3 align-items-end">
 
-                    {{-- TANGGAL --}}
                     <div class="col-md-4">
                         <label for="tanggalLaporan" class="form-label">
                             Tanggal Laporan
                         </label>
 
-                        <input type="date"
-                               class="form-control"
-                               id="tanggalLaporan"
-                               name="tanggal"
-                               value="{{ $tanggal }}">
+                        <input type="date" class="form-control" id="tanggalLaporan"
+                            name="tanggal" value="{{ $tanggal }}">
                     </div>
 
-                    {{-- JENIS --}}
                     <div class="col-md-4">
                         <label for="jenisLaporan" class="form-label">
                             Jenis Ijin
                         </label>
 
-                        <select class="form-select"
-                                id="jenisLaporan"
-                                name="jenis">
+                        <select class="form-select" id="jenisLaporan" name="jenis">
 
                             <option value=""
                                 {{ $jenis === '' ? 'selected' : '' }}>
@@ -74,7 +62,7 @@
                                 Tampilkan
                             </button>
 
-                            <a href="{{ route('keluar.index') }}"
+                            <a href="{{ route('lembur.index') }}"
                                class="btn btn-back">
                                 <i class="fas fa-sync-alt me-1"></i>
                                 Hari Ini
@@ -128,19 +116,20 @@
         {{-- TABLE --}}
         <div class="card-body table-responsive">
             <table class="table table-striped table-hover" id="tabelRekap" width="100%">
-                <thead>
+                <thead>                    
                     <tr>
-                        <th class="text-center">No</th>
-                        <th>Tanggal</th>
-                        <th>Pegawai</th>
-                        <th>Sub Bagian</th>
-                        <th>Ijin</th>
-                        <th class="text-center">Jenis</th>
-                        <th class="text-center">Jam Keluar</th>
-                        <th class="text-center">Jam Masuk</th>
-                        <th class="text-center">Status</th>
-                        <th>Pengawas</th>
-                        <th class="text-center">Aksi</th>
+                        <th class="text-center" style="width: 4%;">No</th>
+                        <th style="width: 9%;">Tanggal</th>
+                        <th style="width: 14%;">Pegawai</th>
+                        <th style="width: 12%;">Sub Bagian</th>
+                        <th style="width: 9%;">Ijin</th>
+                        <th class="text-center" style="width: 7%;">Jenis</th>
+                        <th class="text-center" style="width: 9%;">Jam Keluar</th>
+                        <th class="text-center" style="width: 9%;">Jam Masuk</th>
+                        <th class="text-center" style="width: 8%;">Status</th>
+                        <th class="text-center" style="width: 8%;">Durasi / Selisih Masuk</th>
+                        <th style="width: 11%;">Pengawas</th>
+                        <th class="text-center" style="width: 8%;">Aksi</th>
                     </tr>
                 </thead>
 
@@ -165,17 +154,17 @@
                             </td>
                             {{-- IJIN --}}
                             <td>
-                                {{ optional($row->perijinan)->izin ?? '-' }}
+                                {{ optional($row->qrcode)->ket ?? '-' }}
                             </td>
                             {{-- JENIS --}}
                             <td class="text-center">
-                                @if(optional($row->perijinan)->jenis == 'PRIBADI')
-                                    <span class="badge bg-warning text-dark">
-                                        Pribadi
+                                @if(optional($row->perijinan)->jenis == 'PRIBADI' || $row->jenis_scan == \App\Models\IjinKeluar::SCAN_PEGAWAI)
+                                    <span class="badge bg-success">
+                                        PRIBADI
                                     </span>
-                                @elseif(optional($row->perijinan)->jenis == 'DINAS')
-                                    <span class="badge bg-primary">
-                                        Kedinasan
+                                @elseif(optional($row->perijinan)->jenis == 'DINAS' || $row->jenis_scan == \App\Models\IjinKeluar::SCAN_SUBBAG)
+                                    <span class="badge bg-warning text-dark">
+                                        DINAS
                                     </span>
                                 @else
                                     <span class="text-muted">-</span>
@@ -200,9 +189,34 @@
                                         Keluar
                                     </span>
                                 @else
-                                    <span class="badge bg-success">
+                                    <span class="badge bg-primary">
                                         Kembali
                                     </span>
+                                @endif
+                            </td>
+                            {{-- DURASI PRIBADI ATAU SELISIH WAKTU MASUK DINAS --}}
+                            <td class="text-center text-nowrap">
+                                @if($row->durasi_scan_menit === null)
+                                    -
+                                @elseif($row->durasi_scan_jenis === 'DINAS')
+                                    @if($row->durasi_scan_menit < 0)
+                                        <span class="text-danger">
+                                            {{ $row->durasi_scan_menit }} menit
+                                        </span>
+                                    @elseif($row->durasi_scan_menit > 0)
+                                        +{{ $row->durasi_scan_menit }} menit
+                                    @else
+                                        0 menit
+                                    @endif
+                                @else
+                                    @php
+                                        $durasiJam = intdiv($row->durasi_scan_menit, 60);
+                                        $durasiSisaMenit = $row->durasi_scan_menit % 60;
+                                    @endphp
+                                    @if($durasiJam > 0)
+                                        {{ $durasiJam }} jam
+                                    @endif
+                                    {{ $durasiSisaMenit }} menit
                                 @endif
                             </td>
                             {{-- PENGAWAS --}}
@@ -222,7 +236,7 @@
                     @empty
 
                         <tr>
-                            <td colspan="11"
+                            <td colspan="12"
                                 class="text-center text-muted py-4">
                                 <i class="fas fa-info-circle me-1"></i>
                                 Belum ada data ijin keluar.

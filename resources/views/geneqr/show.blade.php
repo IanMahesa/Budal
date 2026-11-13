@@ -21,7 +21,7 @@
                 <div class="card-body text-center">
                     {!! QrCode::size(292)->generate($qrcode->nomor_kartu) !!}
                     <hr>
-                    <strong>{{ $qrcode->nomor_kartu }}</strong>
+                    <strong>{{ $qrcode->nama_kartu }}</strong>
                 </div>
             </div>
             <div class="mt-3 ms-3">
@@ -73,14 +73,13 @@
                                 {{ optional($qrcode->pegawai)->nama ?? '-' }}
                             </td>
                         </tr>
-                        @else
+                        @endif
                         <tr>
                             <th>Sub Bagian</th>
                             <td>
-                                {{ optional($qrcode->subbag)->sub_bag ?? '-' }}
+                                {{ optional($qrcode->subbag ?? optional($qrcode->pegawai)->subbag)->sub_bag ?? '-' }}
                             </td>
                         </tr>
-                        @endif
 
                         <tr>
                             <th>Status</th>

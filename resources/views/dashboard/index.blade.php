@@ -109,6 +109,58 @@
 
     </div>
 
+    <div class="row mb-4">
+
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow h-100 py-2">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
+                        <i class="fas fa-calendar-alt text-primary fa-lg"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted">Total Kegiatan</small>
+                        <h4 class="fw-bold mb-0">
+                            {{ $lembur->count() }}
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow h-100 py-2">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+                        <i class="fas fa-hourglass-half text-warning fa-lg"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted">Sedang Berlangsung</small>
+                        <h4 class="fw-bold mb-0">
+                            {{ $lembur->where('status', 'Berlangsung')->count() }}
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card border-0 shadow h-100 py-2">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-success bg-opacity-10 p-3 me-3">
+                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted">Selesai</small>
+                        <h4 class="fw-bold mb-0">
+                            {{ $lembur->where('status', 'Selesai')->count() }}
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
     <div class="row">
     
         <div class="col-lg-8 mb-4">

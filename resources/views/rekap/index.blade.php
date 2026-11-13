@@ -178,15 +178,14 @@
                 <thead>
                     <tr>
                         <th width="5%" class="text-center">No</th>
-                        <th width="7%" class="text-center">NIK</th>
                         <th width="10%">Nama</th>
-                        <th width="12%">Bagian</th>
                         <th width="15%">Sub Bagian</th>
                         <th width="10%" class="text-center">Jml Ijin Pribadi</th>
                         <th width="8%" class="text-center">Durasi</th>
                         <th width="10%" class="text-center">Jml Ijin Dinas</th>
                         <th width="8%" class="text-center">Durasi</th>
-                        <th width="10%" class="text-center">Total Durasi</th>
+                        <th width="10%" class="text-center">Jml Lembur</th>
+                        <th width="8%" class="text-center">Durasi</th>
                     </tr>
                 </thead>
 
@@ -194,16 +193,17 @@
 
                 </tbody>
 
-                 <tfoot class="table-secondary">
+                <tfoot class="table-secondary">
                     <tr>
-                        <th colspan="5" class="text-end">
+                        <th colspan="3" class="text-end">
                             TOTAL
                         </th>
                         <th id="tfootPribadi">0</th>
                         <th id="tfootDurasiPribadi">0</th>
                         <th id="tfootDinas">0</th>
                         <th id="tfootDurasiDinas">0</th>
-                        <th id="tfootTotal">0</th>
+                        <th id="tfootLembur">0</th>
+                        <th id="tfootDurasiLembur">0</th>
                     </tr>
                 </tfoot>
 
@@ -380,7 +380,7 @@ $(function () {
 
         error:function(xhr){
             console.error('Rekap AJAX error:', xhr.responseText);
-            tableElement.find('tbody').html('<tr><td colspan="10" class="text-center text-danger">Gagal memuat data rekap. Silakan cek log server.</td></tr>');
+            tableElement.find('tbody').html('<tr><td colspan="9" class="text-center text-danger">Gagal memuat data rekap. Silakan cek log server.</td></tr>');
         },
 
         columns:[
@@ -391,9 +391,7 @@ $(function () {
                 }
             },
 
-            {data:'nik'},
             {data:'nama'},
-            {data:'bag'},
             {data:'sub_bag'},
             {data:'jml_pribadi'},
             {
@@ -409,21 +407,22 @@ $(function () {
                     return (data ?? 0)+' Menit';
                 }
             },
+            {data:'jml_lembur'},
             {
-                data:'total_durasi',
+                data:'durasi_lembur',
                 render:function(data){
-                    return '<b>'+(data ?? 0)+' Menit</b>';
+                    return (data ?? 0)+' Menit';
                 }
             }
         ],
 
         footerCallback:function(row, data, start, end, display){
-            let pegawai = data.length;
             let jp=0;
             let dp=0;
             let jd=0;
             let dd=0;
-            let total=0;
+            let jl=0;
+            let dl=0;
 
             data.forEach(function(item){
                 jp+=parseInt(item.jml_pribadi??0);
@@ -432,14 +431,16 @@ $(function () {
                 jd+=parseInt(item.jml_dinas??0);
                 dd+=parseInt(item.durasi_dinas??0);
 
-                total+=parseInt(item.total_durasi??0);
+                jl+=parseInt(item.jml_lembur??0);
+                dl+=parseInt(item.durasi_lembur??0);
             });
 
             $('#tfootPribadi').text(jp);
             $('#tfootDurasiPribadi').text(dp);
             $('#tfootDinas').text(jd);
             $('#tfootDurasiDinas').text(dd);
-            $('#tfootTotal').text(total);
+            $('#tfootLembur').text(jl);
+            $('#tfootDurasiLembur').text(dl);
         }
     });
 

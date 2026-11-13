@@ -12,7 +12,8 @@ class RoleController extends Controller
 {
     function __construct()
     {
-        $this->middleware('permission:role-list|role-create|role-edit|role-delete', ['only' => ['index']]);
+        $this->middleware('permission:role-list', ['only' => ['index']]);
+        $this->middleware('permission:role-list', ['only' => ['show']]);
         $this->middleware('permission:role-create', ['only' => ['create', 'store']]);
         $this->middleware('permission:role-edit', ['only' => ['edit', 'update']]);
         $this->middleware('permission:role-delete', ['only' => ['destroy']]);
@@ -34,19 +35,7 @@ class RoleController extends Controller
     public function create()
     {
         $permissionMatrix = $this->permissionMatrix();
-        $permissionNames = collect($permissionMatrix)
-            ->flatMap(function ($actions) {
-                return array_values($actions);
-            })
-            ->unique()
-            ->values();
-
-        foreach ($permissionNames as $permissionName) {
-            Permission::firstOrCreate([
-                'name' => $permissionName,
-                'guard_name' => 'web',
-            ]);
-        }
+        $permissionNames = $this->ensurePermissionMatrixPermissions($permissionMatrix);
 
         $permissions = Permission::whereIn('name', $permissionNames)->get();
 
@@ -89,6 +78,7 @@ class RoleController extends Controller
     {
         $role = Roles::findOrFail($id);
         $permissionMatrix = $this->permissionMatrix();
+        $this->ensurePermissionMatrixPermissions($permissionMatrix);
         $permission = Permission::get();
         $rolePermissions = DB::table('role_has_permissions')
             ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
@@ -183,11 +173,81 @@ class RoleController extends Controller
     private function permissionMatrix()
     {
         $features = [
-            'user', 'role', 'bagian', 'subag', 'pegawai', 'perijinan',
-            'geneqr', 'scan', 'keluar', 'rekap', 'notifikasi',
+            'dashboard', 'user', 'role', 'bagian', 'subag', 'pegawai', 'perijinan',
+            'geneqr', 'scan', 'keluar', 'rekap', 'rekappeg', 'notifikasi', 'qrcode',
         ];
 
         return collect($features)->mapWithKeys(function ($feature) {
+            if ($feature === 'user') {
+                return [$feature => [
+                    'create' => 'user-create',
+                    'list' => 'user-list',
+                    'update' => 'user-edit',
+                    'delete' => 'user-delete',
+                    'manage' => null,
+                ]];
+            }
+
+            if ($feature === 'role') {
+                return [$feature => [
+                    'create' => 'role-create',
+                    'list' => 'role-list',
+                    'update' => 'role-edit',
+                    'delete' => 'role-delete',
+                    'manage' => null,
+                ]];
+            }
+
+            if ($feature === 'bagian') {
+                return [$feature => [
+                    'create' => 'bagian-create',
+                    'list' => 'bagian-list',
+                    'update' => 'bagian-edit',
+                    'delete' => 'bagian-delete',
+                    'manage' => null,
+                ]];
+            }
+
+            if ($feature === 'subag') {
+                return [$feature => [
+                    'create' => 'subag-create',
+                    'list' => 'subag-list',
+                    'update' => 'subag-edit',
+                    'delete' => 'subag-delete',
+                    'manage' => null,
+                ]];
+            }
+
+            if ($feature === 'scan') {
+                return [$feature => [
+                    'create' => null,
+                    'list' => 'scan-list',
+                    'update' => null,
+                    'delete' => null,
+                    'manage' => null,
+                ]];
+            }
+        
+            if ($feature === 'dashboard') {
+                return [$feature => [
+                    'create' => null,
+                    'list' => 'dashboard-list',
+                    'update' => null,
+                    'delete' => null,
+                    'manage' => null,
+                ]];
+            }
+
+            if ($feature === 'rekappeg') {
+                return [$feature => [
+                    'create' => null,
+                    'list' => 'rekappeg-list',
+                    'update' => null,
+                    'delete' => null,
+                    'manage' => null,
+                ]];
+            }
+
             return [$feature => [
                 'create' => $feature . '-create',
                 'list' => $feature === 'role' ? 'role-list' : $feature . '-list',
@@ -196,6 +256,26 @@ class RoleController extends Controller
                 'manage' => $feature . '-manage',
             ]];
         })->all();
+    }
+
+    private function ensurePermissionMatrixPermissions(array $permissionMatrix)
+    {
+        $permissionNames = collect($permissionMatrix)
+            ->flatMap(function ($actions) {
+                return array_values($actions);
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($permissionNames as $permissionName) {
+            Permission::firstOrCreate([
+                'name' => $permissionName,
+                'guard_name' => 'web',
+            ]);
+        }
+
+        return $permissionNames;
     }
 
     private function expandManagePermissions(array $permissions): array

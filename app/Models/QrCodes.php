@@ -28,6 +28,8 @@ class QrCodes extends Model
         'status',
         'ket',
         'tanggal_dinas',
+        'waktu_keluar',
+        'waktu_masuk',
         'tanggal_generate',
         'tanggal_cetak',
         'is_delete',

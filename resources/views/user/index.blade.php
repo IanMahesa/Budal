@@ -4,6 +4,7 @@
 
 @section('content')
 
+<div class="container">
 <div class="card tabel-card">
         <div class="card-body table-responsive">
             <div class="d-flex justify-content-between align-items-center mb-3 ms-3 me-3">
@@ -62,7 +63,7 @@
                             </td>
                             <td class="text-center">
                                 <span class="badge bg-info">
-                                    {{ $user->role->name ?? '-' }}
+                                    {{ $user->role->name ?? 'Belum diatur' }}
                                 </span>
                             </td>
                             <td class="text-center">
@@ -103,7 +104,7 @@
         </div>
     </div>
 </div>
-
+</div>
 </div>
 
 @endsection

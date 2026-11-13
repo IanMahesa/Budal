@@ -21,7 +21,7 @@
                 <div class="card-body text-center">
                     {!! QrCode::size(292)->generate($qrcode->nomor_kartu) !!}
                     <hr>
-                    <strong>{{ $qrcode->nomor_kartu }}</strong>
+                    <strong>{{ $qrcode->nama_kartu }}</strong>
                 </div>
             </div>
             <div class="mt-3 ms-3">
@@ -66,21 +66,33 @@
                             <td><code>{{ $qrcode->nomor_kartu }}</code></td>
                         </tr>
 
-                        @if($qrcode->jenis_qr=='PEGAWAI')
+                        @if($qrcode->jenis_qr == 'SUBBAG')
+                        <tr>
+                            <th>Tanggal Dinas</th>
+                            <td>{{ $qrcode->tanggal_dinas ? $qrcode->tanggal_dinas->format('d-m-Y') : '-' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Waktu Absen Keluar</th>
+                            <td>{{ $qrcode->waktu_keluar ? substr((string) $qrcode->waktu_keluar, 0, 5) : '-' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Batas Waktu Absen Masuk</th>
+                            <td>{{ $qrcode->waktu_masuk ? substr((string) $qrcode->waktu_masuk, 0, 5) : '-' }}</td>
+                        </tr>
+                        @endif
+
                         <tr>
                             <th>Pegawai</th>
                             <td>
                                 {{ optional($qrcode->pegawai)->nama ?? '-' }}
                             </td>
                         </tr>
-                        @else
                         <tr>
                             <th>Sub Bagian</th>
                             <td>
-                                {{ optional($qrcode->subbag)->sub_bag ?? '-' }}
+                                {{ optional($qrcode->subbag ?? optional($qrcode->pegawai)->subbag)->sub_bag ?? '-' }}
                             </td>
                         </tr>
-                        @endif
 
                         <tr>
                             <th>Status</th>

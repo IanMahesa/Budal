@@ -18,13 +18,7 @@
             <div class="d-flex justify-content-between align-items-center mb-3 ms-3 me-3">
                 <h4 class="mb-0">Data QR Code Pribadi</h4>
 
-                <div class="d-flex gap-2">
-                    @can('geneqr-create')
-                    <a href="{{ route('geneqr.create') }}" class="btn btn-tambah">
-                        <i class="fas fa-plus"></i> Tambah
-                    </a>
-                    @endcan
-
+                <div class="d-flex gap-2">                    
                     @can('geneqr-manage')
                     <button type="button" id="btnCetak" class="btn btn-cetak">
                         <i class="fas fa-print"></i> Cetak
@@ -40,8 +34,8 @@
                     <tr>
                         <th class="text-center" width="50"> <input type="checkbox" id="checkAll"> </th>
                         <th class="text-center" width="50">No</th>
-                        <th>Sub Bagian</th>
                         <th>Nama Pegawai</th>
+                        <th>Sub Bagian</th>
                         <th>Nama Kartu</th>
                         <th>Nomor Kartu</th>
                         <th width="160">Aksi</th>
@@ -55,12 +49,7 @@
                             name="id_qrcode[]" value="{{ $row->id_qrcode }}">
                         </td>
                         <td class="text-center">{{ $loop->iteration }}</td>
-                        <td>                            
-                            <span class="badge bg-success">
-                                    {{ $row->pegawai->subbag->sub_bag ?? '-' }}
-                            </span>                       
-                        </td>
-                         <td>
+                        <td>
                             @php
                                 $namaPegawai = '-';
 
@@ -78,6 +67,11 @@
 
                             {{ $namaPegawai }}
                         </td>
+                        <td>                            
+                            <span class="badge bg-success">
+                                    {{ $row->pegawai->subbag->sub_bag ?? '-' }}
+                            </span>                       
+                        </td>
                         <td>{{ $row->nama_kartu }}</td>
                         <td>
                             <strong>{{ $row->nomor_kartu }}</strong>
@@ -88,15 +82,7 @@
                             <a href="{{ route('geneqr.show',$row->id_qrcode) }}"
                                 class="btn btn-show btn-sm">
                                 <i class="fas fa-eye"></i>
-                            </a>
-
-                            @can('geneqr-edit')
-                            <a href="{{ route('geneqr.edit',$row->id_qrcode) }}"
-                               class="btn btn-edit btn-sm">
-                               <i class="fas fa-edit"></i>
-                            </a>
-                            @endcan
-
+                            </a>                          
                             
                             <form action="{{ route('geneqr.destroy',$row->id_qrcode) }}" method="POST" class="d-inline">
                                 @csrf

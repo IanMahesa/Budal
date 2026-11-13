@@ -26,20 +26,48 @@
                 @isset($user)
                     @method('PUT')
                 @endisset
+                @unless(isset($user))
+                    <input type="hidden" name="id_peg" id="id_peg" value="{{ old('id_peg') }}">
+                @endunless
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">
-                            Nama User
+                            Nama Pegawai
                         </label>
 
-                        <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                            value="{{ old('name', $user->name ?? '') }}" placeholder="Masukkan nama user" autocomplete="off" required oninput="this.value = this.value.replace(/\b\w/g, c => c.toUpperCase());">
+                        <input type="{{ isset($user) ? 'text' : 'search' }}"
+                            name="name" id="name"
+                            class="form-control @error('name') is-invalid @enderror"
+                            value="{{ old('name', $user->name ?? '') }}"
+                            placeholder="{{ isset($user) ? 'Masukkan nama user' : 'Cari nama atau NIK pegawai' }}"
+                            autocomplete="off" required
+                            @unless(isset($user))
+                                list="pegawai-options"
+                                aria-describedby="pegawai-search-error"
+                            @endunless>
+
+                        @unless(isset($user))
+                            <datalist id="pegawai-options">
+                                @foreach($pegawai as $item)
+                                    <option value="{{ $item->nama }}"
+                                        data-id="{{ $item->id_peg }}"
+                                        data-name="{{ $item->nama }}"
+                                        data-username="{{ $item->nik }}"></option>
+                                @endforeach
+                            </datalist>
+                            <div id="pegawai-search-error" class="text-danger small mt-1" role="alert"></div>
+                        @endunless
 
                         @error('name')
-                        <div class="invalid-feedback">
-                            {{ $message }}
-                        </div>
+                            <div class="invalid-feedback">
+                                {{ $message }}
+                            </div>
                         @enderror
+                        @unless(isset($user))
+                            @error('id_peg')
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
+                        @endunless
                     </div>
 
                     <div class="col-md-6 mb-3">
@@ -47,8 +75,8 @@
                             Username Login
                         </label>
 
-                        <input type="text" name="username" class="form-control @error('username') is-invalid @enderror"
-                            value="{{ old('username', $user->username ?? '') }}" placeholder="Masukkan username" autocomplete="new-password" required>
+                        <input type="text" name="username" id="username" class="form-control @error('username') is-invalid @enderror"
+                            value="{{ old('username', $user->username ?? '') }}" placeholder="NIK pegawai" autocomplete="new-password" required {{ isset($user) ? '' : 'readonly' }}>
 
                         @error('username')
                         <div class="invalid-feedback">
@@ -128,45 +156,6 @@
                         @enderror
                     </div>
 
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Jabatan</label>
-                        <select name="jabatan" id="jabatan" class="form-select @error('jabatan') is-invalid @enderror" required>
-                            <option value="">-- Pilih Jabatan --</option>
-                            @foreach(['Direktur', 'Manajer', 'A.Manajer', 'Staff'] as $jabatan)
-                                <option value="{{ $jabatan }}"
-                                    {{ old('jabatan', $user->jabatan ?? '') === $jabatan ? 'selected' : '' }}>
-                                    {{ $jabatan === 'A.Manajer' ? 'Asisten Manajer' : $jabatan }}
-                                </option>
-                            @endforeach
-                        </select>
-
-                        @error('jabatan')
-                            <div class="invalid-feedback">
-                                {{ $message }}
-                            </div>
-                        @enderror
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3 d-none" id="bagian-wrapper">
-                        <label class="form-label">Bagian</label>
-                        <select name="id_bag" id="id_bag" class="form-select @error('id_bag') is-invalid @enderror" data-selected-value="{{ old('id_bag') }}">
-                            <option value="">-- Pilih Bagian --</option>
-                            @foreach($bagian as $item)
-                                <option value="{{ $item->id_bag }}" {{ old('id_bag') == $item->id_bag ? 'selected' : '' }}>{{ $item->bag }}</option>
-                            @endforeach
-                        </select>
-                        @error('id_bag')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-
-                    <div class="col-md-6 mb-3 d-none" id="subbagian-wrapper">
-                        <label class="form-label">Sub Bagian</label>
-                        <select name="id_subag" id="id_subag" class="form-select @error('id_subag') is-invalid @enderror" data-selected-value="{{ old('id_subag') }}" disabled>
-                            <option value="">-- Pilih Sub Bagian --</option>
-                        </select>
-                        @error('id_subag')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
                 </div>
 
                 <div class="table-divider mt-3 mb-4"></div>
@@ -194,53 +183,42 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const jabatan = document.getElementById('jabatan');
-        const bagianWrapper = document.getElementById('bagian-wrapper');
-        const subbagianWrapper = document.getElementById('subbagian-wrapper');
-        const bagian = document.getElementById('id_bag');
-        const subbagian = document.getElementById('id_subag');
+        const pegawaiId = document.getElementById('id_peg');
+        const name = document.getElementById('name');
+        const username = document.getElementById('username');
+        const pegawaiOptions = document.getElementById('pegawai-options');
+        const pegawaiSearchError = document.getElementById('pegawai-search-error');
 
-        function loadSubbagian(idBag) {
-            subbagian.innerHTML = '<option value="">-- Pilih Sub Bagian --</option>';
-            subbagian.disabled = !idBag;
-            if (!idBag) return;
+        if (pegawaiId && pegawaiOptions) {
+            const options = Array.from(pegawaiOptions.options);
 
-            fetch('{{ route('subbag.byBagian') }}?id_bag=' + encodeURIComponent(idBag))
-                .then(response => response.json())
-                .then(rows => {
-                    rows.forEach(row => {
-                        subbagian.insertAdjacentHTML('beforeend', '<option value="' + row.id_subag + '">' + row.sub_bag + '</option>');
-                    });
-                    subbagian.value = subbagian.dataset.selectedValue || '';
-                    subbagian.disabled = false;
+            function matchPegawai() {
+                const query = name.value.trim().toLocaleLowerCase();
+                const match = options.find(function (option) {
+                    return option.value.toLocaleLowerCase() === query;
                 });
-        }
 
-        function updateFields() {
-            const needsBagian = ['Manajer', 'A.Manajer', 'Staff'].includes(jabatan.value);
-            const needsSubbagian = ['A.Manajer', 'Staff'].includes(jabatan.value);
-            bagianWrapper.classList.toggle('d-none', !needsBagian);
-            subbagianWrapper.classList.toggle('d-none', !needsSubbagian);
-            bagian.required = needsBagian;
-            subbagian.required = needsSubbagian;
-            if (!needsBagian) {
-                bagian.value = '';
-                subbagian.value = '';
-                subbagian.disabled = true;
-            } else if (needsSubbagian) {
-                loadSubbagian(bagian.value);
-            } else {
-                subbagian.value = '';
-                subbagian.disabled = true;
+                pegawaiId.value = match ? match.dataset.id : '';
+                username.value = match ? match.dataset.username : '';
+                name.classList.toggle('is-invalid', Boolean(query && !match));
+                pegawaiSearchError.textContent = query && !match
+                    ? 'Pilih pegawai dari daftar nama dan NIK yang tersedia.'
+                    : '';
+            }
+
+            name.addEventListener('input', matchPegawai);
+            name.addEventListener('change', matchPegawai);
+
+            if (pegawaiId.value) {
+                const selectedPegawai = options.find(function (option) {
+                    return option.dataset.id === pegawaiId.value;
+                });
+                if (selectedPegawai) {
+                    name.value = selectedPegawai.value;
+                    username.value = selectedPegawai.dataset.username;
+                }
             }
         }
-
-        jabatan.addEventListener('change', updateFields);
-        bagian.addEventListener('change', function () {
-            subbagian.dataset.selectedValue = '';
-            if (['A.Manajer', 'Staff'].includes(jabatan.value)) loadSubbagian(this.value);
-        });
-        updateFields();
     });
 
     function togglePassword(inputId, iconId) {

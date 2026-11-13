@@ -8,6 +8,7 @@ use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -19,7 +20,8 @@ class IjinKeluarExport implements
     WithHeadings,
     ShouldAutoSize,
     WithStyles,
-    WithEvents
+    WithEvents,
+    WithTitle
 {
 
     public function __construct($jenis, $tanggalMulai = null, $tanggalAkhir = null)
@@ -27,6 +29,11 @@ class IjinKeluarExport implements
         $this->jenis = $jenis;
         $this->tanggalMulai = $tanggalMulai;
         $this->tanggalAkhir = $tanggalAkhir;
+    }
+
+    public function title(): string
+    {
+        return $this->jenis === 'DINAS' ? 'Ijin Dinas' : 'Ijin Pribadi';
     }
     
     public function collection()
@@ -39,8 +46,15 @@ class IjinKeluarExport implements
         ]);
 
     if ($this->jenis) {
-        $query->whereHas('perijinan', function ($q) {
-            $q->where('jenis', $this->jenis);
+        $jenisScan = $this->jenis === 'DINAS'
+            ? IjinKeluar::SCAN_SUBBAG
+            : IjinKeluar::SCAN_PEGAWAI;
+        $jenis = $this->jenis;
+
+        $query->where(function ($query) use ($jenisScan, $jenis) {
+            $query->whereHas('perijinan', function ($perijinan) use ($jenis) {
+                $perijinan->where('jenis', $jenis);
+            })->orWhere('jenis_scan', $jenisScan);
         });
     }
 
@@ -57,7 +71,7 @@ class IjinKeluarExport implements
                 optional($row->tanggal_keluar)->format('d-m-Y'),
                 optional($row->pegawai)->nama,
                 optional($row->subbag)->sub_bag,
-                optional($row->perijinan)->izin,
+                optional($row->qrcode)->ket,
                 $row->jam_keluar,
                 $row->jam_masuk,
                 $row->durasi_menit
@@ -76,7 +90,7 @@ class IjinKeluarExport implements
             'Tanggal',
             'Pegawai',
             'Sub Bagian',
-            'Ijin',
+            'Keterangan',
             'Jam Keluar',
             'Jam Masuk',
             'Durasi',

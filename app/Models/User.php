@@ -28,6 +28,7 @@ class User extends Authenticatable
         'username',
         'password',
         'id_role',
+        'id_peg',
         'jabatan',
         'id_bag',
         'id_subag',
@@ -66,5 +67,10 @@ class User extends Authenticatable
     public function subbagian(): BelongsTo
     {
         return $this->belongsTo(SubBagians::class, 'id_subag', 'id_subag');
+    }
+
+    public function pegawai(): BelongsTo
+    {
+        return $this->belongsTo(Pegawai::class, 'id_peg', 'id_peg');
     }
 }

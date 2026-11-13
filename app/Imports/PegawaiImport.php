@@ -108,6 +108,7 @@ class PegawaiImport implements ToCollection
                 'nik' => $values['nik'],
                 'jenis_kelamin' => $values['jenis_kelamin'],
                 'jabatan' => $values['jabatan'],
+                'id_bag' => $subbag->id_bag,
                 'id_subag' => $subbag->id_subag,
                 'status' => $values['status'],
             ];

@@ -18,6 +18,7 @@ class NotifikasiIjinController extends Controller
             'pegawai',
             'subbag',
             'perijinan',
+            'qrcode',
             'user',
         ])
             ->whereNull('notification_read_at')
@@ -33,7 +34,7 @@ class NotifikasiIjinController extends Controller
             'id' => ['required', 'integer', 'exists:ijin_keluar,id_transaksi'],
         ]);
 
-        IjinKeluar::whereKey($request->integer('id'))
+        IjinKeluar::whereKey((int) $request->input('id'))
             ->update(['notification_read_at' => now()]);
 
         return response()->json(['success' => true]);

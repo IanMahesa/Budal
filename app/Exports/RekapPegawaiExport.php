@@ -125,7 +125,7 @@ class RekapPegawaiExport implements
             ->join('pegawai as p', 'ik.id_peg', '=', 'p.id_peg')
             ->join('subag as sb', 'ik.id_subag', '=', 'sb.id_subag')
             ->join('bagian as b', 'ik.id_bag', '=', 'b.id_bag')
-            ->join('perijinan as i', 'ik.id_ijin', '=', 'i.id_ijin')
+            ->leftJoin('perijinan as i', 'ik.id_ijin', '=', 'i.id_ijin')
 
             ->select(
                 'p.nik',
@@ -133,11 +133,11 @@ class RekapPegawaiExport implements
                 'b.bag',
                 'sb.sub_bag',
 
-                DB::raw("COUNT(CASE WHEN i.jenis='PRIBADI' THEN 1 END) as jumlah_pribadi"),
-                DB::raw("SUM(CASE WHEN i.jenis='PRIBADI' THEN ik.durasi_menit ELSE 0 END) as durasi_pribadi"),
+                DB::raw("COUNT(CASE WHEN i.jenis='PRIBADI' OR (i.jenis IS NULL AND ik.jenis_scan='PEGAWAI') THEN 1 END) as jumlah_pribadi"),
+                DB::raw("SUM(CASE WHEN i.jenis='PRIBADI' OR (i.jenis IS NULL AND ik.jenis_scan='PEGAWAI') THEN ik.durasi_menit ELSE 0 END) as durasi_pribadi"),
 
-                DB::raw("COUNT(CASE WHEN i.jenis='DINAS' THEN 1 END) as jumlah_dinas"),
-                DB::raw("SUM(CASE WHEN i.jenis='DINAS' THEN ik.durasi_menit ELSE 0 END) as durasi_dinas"),
+                DB::raw("COUNT(CASE WHEN i.jenis='DINAS' OR (i.jenis IS NULL AND ik.jenis_scan='SUBBAG') THEN 1 END) as jumlah_dinas"),
+                DB::raw("SUM(CASE WHEN i.jenis='DINAS' OR (i.jenis IS NULL AND ik.jenis_scan='SUBBAG') THEN ik.durasi_menit ELSE 0 END) as durasi_dinas"),
 
                 DB::raw("SUM(ik.durasi_menit) as total_durasi")
             );

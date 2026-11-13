@@ -11,22 +11,24 @@ use Illuminate\Validation\Rule;
 
 class PerijinanController extends Controller
 {
-    public function index()
+    public function __construct()
     {
-        $perijinan = Perijinan::with('subbag')
-            ->orderBy('id_ijin', 'desc')
-            ->get();
+        $this->middleware('permission:perijinan-list', ['only' => ['index', 'show']]);
+        $this->middleware('permission:perijinan-create', ['only' => ['create', 'store']]);
+        $this->middleware('permission:perijinan-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:perijinan-delete', ['only' => ['destroy']]);
+    }
+
+   public function index()
+    {
+       $perijinan = Perijinan::orderBy('id_ijin', 'desc')->get();
 
         return view('ijin.index', compact('perijinan'));
     }
 
-    public function create(Request $request)
+    public function create()
     {
-        $bagian = Bagians::orderBy('bag')->get();
-        $jenis = strtoupper($request->query('jenis', ''));
-        $jenis = in_array($jenis, ['PRIBADI', 'DINAS'], true) ? $jenis : null;
-
-        return view('ijin.create', compact('bagian', 'jenis'));
+        return view('ijin.create');
     }
 
     public function getPegawaiBySubag($id_subag)
@@ -48,81 +50,75 @@ class PerijinanController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'jenis'  => 'required|in:PRIBADI,DINAS',
+       $validated = $request->validate([
             'izin' => 'required|string|max:100|unique:perijinan,izin',
-            'kode'   => 'required|string|max:5|unique:perijinan,kode',
-            'id_subag' => 'required_if:jenis,DINAS|nullable|exists:subag,id_subag',
-        ],[
-            'jenis.required'      => 'Jenis wajib dipilih.',
-            'izin.required'       => 'Nama perijinan wajib diisi.',
-            'izin.unique'         => 'Nama perijinan sudah digunakan.',
-            'kode.required'       => 'Kode wajib diisi.',
-            'kode.unique'         => 'Kode sudah digunakan.',
-            'id_subag.required_if'=> 'Sub Bagian wajib dipilih untuk perijinan dinas.',
+            'kode' => 'required|string|max:5|unique:perijinan,kode',
+        ], [
+            'izin.required' => 'Jenis ijin wajib diisi.',
+            'izin.string'   => 'Jenis ijin harus berupa teks.',
+            'izin.max'      => 'Jenis ijin maksimal 100 karakter.',
+            'izin.unique'   => 'Jenis ijin sudah terdaftar.',
+
+            'kode.required' => 'Kode wajib diisi.',
+            'kode.string'   => 'Kode harus berupa teks.',
+            'kode.max'      => 'Kode maksimal 5 karakter.',
+            'kode.unique'   => 'Kode sudah digunakan.',
         ]);
 
+        // Simpan data
         Perijinan::create([
-            'izin'      => $request->izin,
-            'kode'      => $request->kode,
-            'jenis'     => strtoupper($request->jenis),
-            'id_subag'  => $request->jenis == 'DINAS'
-                        ? $request->id_subag
-                        : null,
-            'is_delete' => 0,
+            'jenis' => 'PRIBADI',
+            'izin' => $validated['izin'],
+            'kode' => strtoupper($validated['kode']),
         ]);
 
-        return redirect()->route('ijin.index')
-            ->with('success', 'Data perijinan berhasil ditambahkan.');
+        // Kembali dengan pesan sukses
+        return redirect()
+            ->route('ijin.index')
+            ->with('success', 'Data ijin pribadi berhasil ditambahkan.');
     }
 
     public function edit($id)
     {
-        $perijinan = Perijinan::findOrFail($id);
+        $i = Perijinan::findOrFail($id);
 
-        $bagian = Bagians::orderBy('bag')->get();
-
-        $subbagian = SubBagians::orderBy('sub_bag')->get();
-
-        return view('ijin.edit', compact(
-            'perijinan',
-            'bagian',
-            'subbagian'
-        ));
+        return view('ijin.edit', compact('i'));
     }
 
     public function update(Request $request, $id)
     {
-        $perijinan = Perijinan::findOrFail($id);
+        $i = Perijinan::findOrFail($id);
 
-        $request->validate([
-            'jenis' => 'required|in:PRIBADI,DINAS',
-            'izin'  => ['required', 'string', 'max:100',
-                        Rule::unique('perijinan', 'izin')->ignore($perijinan->id_ijin, 'id_ijin'), ],
-            'kode'  => ['required', 'string', 'max:5',
-                        Rule::unique('perijinan', 'kode')->ignore($perijinan->id_ijin, 'id_ijin'),],
-            'id_subag' => 'required_if:jenis,DINAS|nullable|exists:subag,id_subag',
-
-            ],[
-            'jenis.required'       => 'Jenis wajib dipilih.',
-            'izin.required'        => 'Nama perijinan wajib diisi.',
-            'izin.unique'          => 'Nama perijinan sudah digunakan.',
-            'kode.required'        => 'Kode wajib diisi.',
-            'kode.unique'          => 'Kode sudah digunakan.',
-            'id_subag.required_if' => 'Sub Bagian wajib dipilih untuk perijinan dinas.',
-            ]);
-
-        $perijinan->update([
-            'jenis'    => $request->jenis,
-            'izin'     => $request->izin,
-            'kode'     => strtoupper($request->kode),
-            'id_subag' => $request->jenis == 'DINAS' ? $request->id_subag : null,
+        $validated = $request->validate([
+            'izin' => [
+                'required',
+                'string',
+                'max:255',
+            ],
+            'kode' => [
+                'required',
+                'string',
+                'max:5',
+                Rule::unique('perijinan', 'kode')->ignore($i->id_ijin, 'id_ijin'),
+            ],
+        ], [
+            'izin.required' => 'Jenis ijin wajib diisi.',
+            'izin.string'   => 'Jenis ijin harus berupa teks.',
+            'izin.max'      => 'Jenis ijin maksimal 255 karakter.',
+            'kode.required' => 'Kode wajib diisi.',
+            'kode.string'   => 'Kode harus berupa teks.',
+            'kode.max'      => 'Kode maksimal 5 karakter.',
+            'kode.unique'   => 'Kode sudah digunakan, silakan gunakan kode lain.',
         ]);
 
-        return redirect()->route('ijin.index')
-            ->with('success', 'Data perijinan berhasil diubah.');
-    }
+        $i->izin = $validated['izin'];
+        $i->kode = strtoupper($validated['kode']);
+        $i->save();
 
+        return redirect()
+            ->route('ijin.index')
+            ->with('success', 'Data ijin pribadi berhasil diperbarui.');
+    }
     public function destroy($id)
     {
         $perijinan = Perijinan::findOrFail($id);

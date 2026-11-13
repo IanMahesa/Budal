@@ -7,14 +7,28 @@ use App\Models\IjinKeluar;
 use App\Models\Pegawai;
 use App\Models\SubBagians;
 use App\Models\QrCodes;
+use App\Models\User;
 use App\Imports\PegawaiImport;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use App\Exports\RekapHarianExport;
 use App\Exports\RekapHarianMultiExport;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PegawaiController extends Controller
-{    
+{
+    public function __construct()
+    {
+        $this->middleware('permission:pegawai-list', ['only' => ['index', 'show']]);
+        $this->middleware('permission:pegawai-create', ['only' => ['create', 'store', 'import']]);
+        $this->middleware('permission:pegawai-edit', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:pegawai-delete', ['only' => ['destroy']]);
+        $this->middleware('permission:pegawai-create|pegawai-edit', ['only' => ['getSubBagian']]);
+        $this->middleware('permission:rekap-list', ['only' => ['rekap', 'exportHarian']]);
+    }
+
     public function index()
     {
         $pegawai = Pegawai::with(['subbag.bagian'])
@@ -63,26 +77,32 @@ class PegawaiController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'nama'            => 'required|string|max:100',
             'nik'             => 'required|digits_between:5,8|unique:pegawai,nik',
             'jenis_kelamin'   => 'required|in:L,P',
             'jabatan'         => 'required|in:Direktur,Manajer,A.Manajer,Staff',
-            'id_subag'        => 'required|exists:subag,id_subag',
+            'id_bag'          => 'nullable|required_unless:jabatan,Direktur|exists:bagian,id_bag',
+            'id_subag'        => 'nullable|required_if:jabatan,A.Manajer,Staff|exists:subag,id_subag',
             'status'          => 'required|in:Aktif,Tidak Aktif',
         ]);
+        $validated = $this->validatePegawaiOrganization($validated);
 
-        $pegawai = Pegawai::create([
-            'nama'            => $request->nama,
-            'nik'             => $request->nik,
-            'jenis_kelamin'   => $request->jenis_kelamin,
-            'jabatan'         => $request->jabatan,
-            'id_subag'        => $request->id_subag,
-            'status'          => $request->status,
-            'is_delete'       => 0,
-        ]);
+        DB::transaction(function () use ($validated) {
+            $pegawai = Pegawai::create([
+                'nama'            => $validated['nama'],
+                'nik'             => $validated['nik'],
+                'jenis_kelamin'   => $validated['jenis_kelamin'],
+                'jabatan'         => $validated['jabatan'],
+                'id_bag'          => $validated['id_bag'],
+                'id_subag'        => $validated['id_subag'],
+                'status'          => $validated['status'],
+                'is_delete'       => 0,
+            ]);
 
-        
+            $this->syncUserForPegawai($pegawai);
+            $this->createQrCodeForPegawai($pegawai);
+        });
 
         return redirect()
                 ->route('pegawai.index')
@@ -94,8 +114,9 @@ class PegawaiController extends Controller
         $pegawai = Pegawai::with('subbag')->findOrFail($id);
 
         $bagian = Bagians::orderBy('bag')->get();
+        $idBag = $pegawai->id_bag ?: optional($pegawai->subbag)->id_bag;
 
-        $subbag = SubBagians::where('id_bag', $pegawai->subbag->id_bag)
+        $subbag = SubBagians::where('id_bag', $idBag)
                     ->orderBy('sub_bag')
                     ->get();
 
@@ -110,27 +131,121 @@ class PegawaiController extends Controller
     {
         $pegawai = Pegawai::findOrFail($id);
 
-        $request->validate([
+        $validated = $request->validate([
             'nama'            => 'required|string|max:100',
             'nik'             => 'required|digits_between:5,8|unique:pegawai,nik,' . $pegawai->id_peg . ',id_peg',
             'jenis_kelamin'   => 'required|in:L,P',
             'jabatan'         => 'required|in:Direktur,Manajer,A.Manajer,Staff',
-            'id_subag'        => 'required|exists:subag,id_subag',
+            'id_bag'          => 'nullable|required_unless:jabatan,Direktur|exists:bagian,id_bag',
+            'id_subag'        => 'nullable|required_if:jabatan,A.Manajer,Staff|exists:subag,id_subag',
             'status'          => 'required|in:Aktif,Tidak Aktif',
         ]);
+        $validated = $this->validatePegawaiOrganization($validated);
 
-        $pegawai->update([
-            'nama'            => $request->nama,
-            'nik'             => $request->nik,
-            'jenis_kelamin'   => $request->jenis_kelamin,
-            'jabatan'         => $request->jabatan,
-            'id_subag'        => $request->id_subag,
-            'status'          => $request->status,
-        ]);
+        DB::transaction(function () use ($pegawai, $validated) {
+            $pegawai->update([
+                'nama'            => $validated['nama'],
+                'nik'             => $validated['nik'],
+                'jenis_kelamin'   => $validated['jenis_kelamin'],
+                'jabatan'         => $validated['jabatan'],
+                'id_bag'          => $validated['id_bag'],
+                'id_subag'        => $validated['id_subag'],
+                'status'          => $validated['status'],
+            ]);
+
+            QrCodes::withoutGlobalScopes()
+                ->where('id_peg', $pegawai->id_peg)
+                ->where('jenis_qr', 'PEGAWAI')
+                ->update(['id_subag' => $pegawai->id_subag]);
+
+            $this->syncUserForPegawai($pegawai);
+        });
 
         return redirect()
                 ->route('pegawai.index')
                 ->with('success', 'Data pegawai berhasil diubah.');
+    }
+
+    private function validatePegawaiOrganization(array $validated): array
+    {
+        $validated['id_bag'] = $validated['id_bag'] ?? null;
+        $validated['id_subag'] = $validated['id_subag'] ?? null;
+
+        if ($validated['jabatan'] === 'Manajer') {
+            $validated['id_subag'] = null;
+        } elseif ($validated['jabatan'] === 'Direktur' && $validated['id_subag']) {
+            $subbag = SubBagians::findOrFail($validated['id_subag']);
+            $validated['id_bag'] = $validated['id_bag'] ?: $subbag->id_bag;
+        }
+
+        if ($validated['id_subag']) {
+            $subbagBelongsToBagian = SubBagians::where('id_subag', $validated['id_subag'])
+                ->where('id_bag', $validated['id_bag'])
+                ->exists();
+
+            if (!$subbagBelongsToBagian) {
+                throw ValidationException::withMessages([
+                    'id_subag' => 'Sub bagian tidak sesuai dengan bagian yang dipilih.',
+                ]);
+            }
+        }
+
+        return $validated;
+    }
+
+    private function syncUserForPegawai(Pegawai $pegawai): void
+    {
+        $pegawai->load('subbag');
+        $user = User::where('id_peg', $pegawai->id_peg)->first();
+
+        if (!$user) {
+            $user = User::whereNull('id_peg')
+                ->where('username', $pegawai->nik)
+                ->first();
+        }
+
+        $isNewUser = !$user;
+        $user = $user ?: new User;
+
+        $user->id_peg = $pegawai->id_peg;
+        $user->name = $pegawai->nama;
+        $user->username = $pegawai->nik;
+        $user->jabatan = $pegawai->jabatan;
+        $user->id_bag = in_array($pegawai->jabatan, ['Manajer', 'A.Manajer', 'Staff'], true)
+            ? ($pegawai->id_bag ?: optional($pegawai->subbag)->id_bag)
+            : null;
+        $user->id_subag = in_array($pegawai->jabatan, ['A.Manajer', 'Staff'], true)
+            ? $pegawai->id_subag
+            : null;
+
+        if ($isNewUser) {
+            $user->password = Hash::make('12345678');
+            $user->is_delete = 0;
+        }
+
+        $user->save();
+    }
+
+    private function createQrCodeForPegawai(Pegawai $pegawai): void
+    {
+        $nomorKartu = strtoupper($pegawai->nik);
+
+        if (QrCodes::withoutGlobalScopes()->where('nomor_kartu', $nomorKartu)->exists()) {
+            throw ValidationException::withMessages([
+                'nik' => 'NIK sudah digunakan sebagai nomor QR Code.',
+            ]);
+        }
+
+        QrCodes::create([
+            'jenis_qr' => 'PEGAWAI',
+            'nama_kartu' => strtoupper($pegawai->nama),
+            'nomor_kartu' => $nomorKartu,
+            'id_peg' => $pegawai->id_peg,
+            'id_subag' => $pegawai->id_subag,
+            'status' => $pegawai->status === 'Aktif' ? 'Aktif' : 'Nonaktif',
+            'tanggal_generate' => now(),
+            'is_delete' => 0,
+        ]);
     }
             
     public function destroy($id)
